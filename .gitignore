@@ -1,0 +1,12 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+
+# Database
+db/
+
+# Build artifacts
+build/
+dist/
+*.egg-info

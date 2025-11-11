@@ -1,0 +1,23 @@
+1. **Multiple Timelines System**
+   - Added `timeline` field to Event model (default: "Default")
+   - Timeline selector in UI with dropdown + text input
+   - Timeline filtering and switching functionality
+   - CSV import/export with timeline support
+
+2. **Voice Transcription Integration**
+   - Installed OpenAI Whisper in backend virtual environment
+   - Created `WhisperService` class for audio processing
+   - Added `/transcribe/` API endpoint with file upload
+   - Built `VoiceTranscriber` React component with:
+     - Browser audio recording capability
+     - File upload for existing audio files
+     - Real-time transcription processing
+     - Auto-population of event descriptions
+
+3. **Enhanced Event Management**
+   - 24-hour time format for precise timing
+   - Quick preset buttons (Now, Today, Current Time)
+   - Improved form validation and error handling
+   - CSV templates with timeline column
+
+4. 
