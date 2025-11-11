@@ -1,9 +1,12 @@
 import os
 import chromadb
+from chromadb.types import Metadata
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from sentence_transformers import SentenceTransformer
 import logging
+import requests
+import json
 
 # --- 1. Application Setup ---
 
@@ -85,7 +88,7 @@ async def upload_document(file: UploadFile = File(...)):
 
         # Generate unique IDs and metadata for each chunk
         ids = [f"file_{file.filename}_chunk_{i}" for i in range(len(chunks))]
-        metadatas = [{"source_filename": file.filename, "chunk_index": i} for i in range(len(chunks))]
+        metadatas: list[Metadata] = [{"source_filename": file.filename, "chunk_index": i} for i in range(len(chunks))]
 
         # Generate embeddings for each chunk
         embeddings = embedding_model.encode(chunks).tolist()
@@ -110,27 +113,125 @@ async def upload_document(file: UploadFile = File(...)):
 @app.get("/query")
 async def query_documents(q: str):
     """
-    Performs a semantic search on the document collection.
+    Queries the ChromaDB collection with a given text string and returns the top 5 results.
+    Includes metadata (source filename) in the response.
     """
     if not q:
-        raise HTTPException(status_code=400, detail="Query parameter 'q' cannot be empty.")
+        raise HTTPException(status_code=400, detail="Query parameter 'q' is required.")
 
     try:
         logger.info(f"Received query: '{q}'")
-        # Generate embedding for the query
-        query_embedding = embedding_model.encode([q]).tolist()
-
-        # Query the collection
         results = collection.query(
-            query_embeddings=query_embedding,
-            n_results=5  # Return the top 5 most relevant documents
+            query_texts=[q],
+            n_results=5
         )
+        
+        # The query returns a dictionary with the results, including documents and metadatas
+        # Each is a list of lists, one for each query. We only have one query.
+        documents = results.get('documents')
+        metadatas = results.get('metadatas')
 
-        return {"query": q, "results": results['documents'][0] if results and results['documents'] else []}
+        if not documents or not metadatas:
+             return []
+
+        # Combine the document with its metadata
+        response_data = [
+            {"document": doc, "metadata": meta}
+            for doc, meta in zip(documents[0], metadatas[0])
+        ]
+
+        return response_data
 
     except Exception as e:
-        logger.error(f"Error during query: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to execute query: {e}")
+        logger.error(f"An error occurred during query processing: {e}")
+        raise HTTPException(status_code=500, detail="Error processing query.")
+
+
+@app.get("/api/ollama/models")
+async def get_ollama_models():
+    """
+    Fetches the list of available models from the Ollama API.
+    """
+    try:
+        response = requests.get("http://127.0.0.1:11434/api/tags")
+        response.raise_for_status()  # Raise an exception for bad status codes
+        models_data = response.json()
+        # We only need the model names for the dropdown
+        model_names = [model["name"] for model in models_data.get("models", [])]
+        return {"models": model_names}
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Could not connect to Ollama API: {e}")
+        raise HTTPException(status_code=503, detail="Could not connect to Ollama API. Ensure Ollama is running.")
+    except Exception as e:
+        logger.error(f"An error occurred while fetching Ollama models: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch models from Ollama.")
+
+
+@app.post("/query/rag")
+async def query_rag(query: str = Form(...), model: str = Form(...)):
+    """
+    Performs Retrieval-Augmented Generation.
+    1. Retrieves relevant document chunks from ChromaDB.
+    2. Constructs a prompt with the user's query and the retrieved context.
+    3. Sends the prompt to the selected Ollama model.
+    4. Returns the model's response.
+    """
+    logger.info(f"Received RAG query: '{query}' with model: '{model}'")
+
+    # 1. Retrieve context from ChromaDB
+    try:
+        results = collection.query(
+            query_texts=[query],
+            n_results=5
+        )
+        documents = results.get('documents')
+        if not documents or not documents[0]:
+            return {"answer": "I couldn't find any relevant documents to answer your question.", "context": []}
+        
+        context_chunks = documents[0]
+        context = "\\n\\n---\\n\\n".join(context_chunks)
+        logger.info(f"Retrieved context: {context[:500]}...") # Log first 500 chars of context
+
+    except Exception as e:
+        logger.error(f"Error querying ChromaDB: {e}")
+        raise HTTPException(status_code=500, detail="Error retrieving documents from the database.")
+
+    # 2. Construct the prompt
+    prompt = f"""
+    Based on the following context, please answer the user's question.
+    If the context does not contain the answer, state that you cannot find the answer in the provided documents.
+
+    Context:
+    {context}
+
+    ---
+    User's Question: {query}
+    """
+
+    # 3. Send to Ollama
+    try:
+        ollama_response = requests.post(
+            "http://127.0.0.1:11434/api/generate",
+            json={
+                "model": model,
+                "prompt": prompt,
+                "stream": False  # For now, we'll get the full response at once
+            }
+        )
+        ollama_response.raise_for_status()
+        
+        answer = ollama_response.json().get("response", "No response from model.")
+        logger.info(f"Ollama model '{model}' responded: {answer[:200]}...")
+
+        return {"answer": answer, "context": context_chunks}
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Could not connect to Ollama model '{model}': {e}")
+        raise HTTPException(status_code=503, detail=f"Could not connect to Ollama model '{model}'.")
+    except Exception as e:
+        logger.error(f"An error occurred during RAG processing: {e}")
+        raise HTTPException(status_code=500, detail="An error occurred while generating the answer.")
+
 
 # To run this application:
 # 1. Make sure you have fastapi, uvicorn, python-multipart, chromadb, and sentence-transformers installed.

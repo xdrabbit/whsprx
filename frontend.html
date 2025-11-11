@@ -3,245 +3,285 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>File Ingestion Frontend</title>
+    <title>Document RAG Search</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            background-color: #f4f7f9;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
             margin: 0;
-            padding-top: 20px; /* Add padding to prevent content from touching the top edge */
-            box-sizing: border-box;
-        }
-        #container {
+            padding: 2rem;
+            background-color: #f7f7f7;
+            color: #333;
             display: flex;
             flex-direction: column;
             align-items: center;
+        }
+        .container {
             width: 100%;
-        }
-        #drop-zone {
-            width: 80%;
-            max-width: 600px;
-            height: 200px; /* Reduced height */
-            border: 3px dashed #ccc;
-            border-radius: 20px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            text-align: center;
-            color: #aaa;
-            font-size: 1.2em;
-            transition: all 0.3s ease;
-        }
-        #drop-zone.drag-over {
-            border-color: #3498db;
-            background-color: #eaf5fb;
-            color: #3498db;
-        }
-        #file-list {
-            margin-top: 20px;
-            width: 80%;
-            max-width: 600px;
-        }
-        #file-list h3 {
-            color: #333;
-        }
-        #file-list ul {
-            list-style-type: none;
-            padding: 0;
-        }
-        #file-list li {
+            max-width: 800px;
             background-color: #fff;
-            padding: 10px;
-            border-radius: 5px;
-            margin-bottom: 5px;
-            border: 1px solid #eee;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
         }
-        #query-container {
-            margin-top: 30px;
-            width: 80%;
-            max-width: 600px;
+        h1, h2 {
+            text-align: center;
+            color: #111;
         }
-        #query-input {
-            width: calc(100% - 95px); /* Adjusted width */
-            padding: 10px;
+        .section {
+            margin-bottom: 2rem;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 2rem;
+        }
+        .section:last-child {
+            border-bottom: none;
+            padding-bottom: 0;
+        }
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+        }
+        input[type="file"], input[type="text"], select {
+            width: 100%;
+            padding: 0.75rem;
             border: 1px solid #ccc;
-            border-radius: 5px;
+            border-radius: 4px;
             box-sizing: border-box;
+            margin-bottom: 1rem;
         }
-        #query-button {
-            width: 80px;
-            padding: 10px;
-            border: none;
-            background-color: #3498db;
+        button {
+            background-color: #007aff;
             color: white;
-            border-radius: 5px;
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 4px;
             cursor: pointer;
-            transition: background-color 0.3s ease;
+            font-size: 1rem;
+            width: 100%;
+            transition: background-color 0.2s;
         }
-        #query-button:hover {
-            background-color: #2980b9;
+        button:hover {
+            background-color: #005ecb;
         }
-        #results-list {
-            margin-top: 20px;
+        #status, #rag-status {
+            margin-top: 1rem;
+            text-align: center;
+            font-style: italic;
+            color: #666;
         }
-        #results-list ul {
-            list-style-type: none;
-            padding: 0;
+        #results-container, #rag-container {
+            margin-top: 1.5rem;
         }
-        #results-list li {
-            background-color: #eaf5fb;
-            padding: 15px;
-            border-radius: 5px;
-            margin-bottom: 10px;
-            border: 1px solid #d0e0eb;
+        .result-item, .context-item {
+            background-color: #f9f9f9;
+            border: 1px solid #ddd;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            border-radius: 4px;
+        }
+        .result-item p, .context-item p {
+            margin: 0 0 0.5rem 0;
+        }
+        .result-item .meta, .context-item .meta {
+            font-size: 0.85rem;
+            color: #888;
+        }
+        #rag-answer {
+            white-space: pre-wrap; /* Preserve whitespace and newlines */
+            line-height: 1.6;
+        }
+        .attribution {
+            font-size: 0.8rem;
+            color: #777;
+            margin-top: 1.5rem;
+            text-align: right;
+            border-top: 1px solid #cce4ff;
+            padding-top: 1rem;
         }
     </style>
 </head>
 <body>
+    <div class="container">
+        <h1>Document RAG Search</h1>
 
-    <div id="container">
-        <div id="drop-zone">
-            <p>Drag & Drop files here to ingest</p>
-        </div>
-        <div id="file-list">
-            <h3>Dropped Files:</h3>
-            <ul id="files"></ul>
+        <div class="section">
+            <h2>1. Upload a Document</h2>
+            <form id="upload-form">
+                <label for="file-input">Select a .txt file to process:</label>
+                <input id="file-input" type="file" name="file" accept=".txt">
+                <button type="submit">Upload and Index</button>
+            </form>
+            <div id="status"></div>
         </div>
 
-        <div id="query-container">
-            <h3>Query Your Documents</h3>
-            <input type="text" id="query-input" placeholder="Ask a question...">
-            <button id="query-button">Search</button>
-            <div id="results-list">
-                <h4>Results:</h4>
-                <ul id="results"></ul>
+        <div class="section">
+            <h2>2. Query with RAG</h2>
+            <form id="rag-form">
+                <label for="rag-query-input">Your Question:</label>
+                <input id="rag-query-input" type="text" placeholder="e.g., What did Alice follow down the hole?">
+                
+                <label for="model-select">Choose an LLM:</label>
+                <select id="model-select" name="model">
+                    <!-- Models will be populated dynamically -->
+                </select>
+                
+                <button type="submit">Get Answer</button>
+            </form>
+            <div id="rag-status"></div>
+            <div id="rag-container">
+                <h3>Generative Answer</h3>
+                <div id="rag-answer-container">
+                    <div id="rag-answer">(Your answer will appear here)</div>
+                </div>
+                
+                <h3>Retrieved Context</h3>
+                <div id="rag-context"></div>
             </div>
         </div>
     </div>
 
     <script>
-        const dropZone = document.getElementById('drop-zone');
-        const fileList = document.getElementById('files');
-        const queryInput = document.getElementById('query-input');
-        const queryButton = document.getElementById('query-button');
-        const resultsList = document.getElementById('results');
-
-        // --- Drag and Drop Logic ---
-
-        // Prevent default drag behaviors
-        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-            dropZone.addEventListener(eventName, preventDefaults, false);
-            document.body.addEventListener(eventName, preventDefaults, false);
-        });
-
-        function preventDefaults(e) {
-            e.preventDefault();
-            e.stopPropagation();
-        }
-
-        // Highlight drop zone when item is dragged over it
-        ['dragenter', 'dragover'].forEach(eventName => {
-            dropZone.addEventListener(eventName, () => dropZone.classList.add('drag-over'), false);
-        });
-
-        ['dragleave', 'drop'].forEach(eventName => {
-            dropZone.addEventListener(eventName, () => dropZone.classList.remove('drag-over'), false);
-        });
-
-        // Handle dropped files
-        dropZone.addEventListener('drop', handleDrop, false);
-
-        function handleDrop(e) {
-            const dt = e.dataTransfer;
-            const files = dt.files;
-            handleFiles(files);
-        }
-
-        function handleFiles(files) {
-            if (files.length === 0) {
-                console.log('No files dropped.');
-                return;
-            }
-
-            [...files].forEach(file => {
-                console.log(`Ingesting file: ${file.name}`);
-                const listItem = document.createElement('li');
-                listItem.textContent = `${file.name}`;
-                fileList.appendChild(listItem);
-
-                const formData = new FormData();
-                formData.append('file', file);
-
-                fetch('/upload', {
-                    method: 'POST',
-                    body: formData
-                })
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error('Upload failed');
-                    }
-                    return response.json();
-                })
-                .then(data => {
-                    console.log('Success:', data);
-                    listItem.textContent += ` - ✅ Ingested!`;
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    listItem.textContent += ` - ❌ Failed!`;
-                });
-            });
-        }
-
-        // --- Query Logic ---
-
-        queryButton.addEventListener('click', handleQuery, false);
-        queryInput.addEventListener('keyup', (e) => {
-            if (e.key === 'Enter') {
-                handleQuery();
-            }
-        });
-
-        async function handleQuery() {
-            const query = queryInput.value;
-            if (!query) {
-                alert('Please enter a query.');
-                return;
-            }
-
-            console.log(`Querying with: "${query}"`);
-            resultsList.innerHTML = '<li>Loading...</li>';
-
+        // --- Populate Ollama Models ---
+        document.addEventListener('DOMContentLoaded', async () => {
+            const modelSelect = document.getElementById('model-select');
+            const ragStatus = document.getElementById('rag-status');
             try {
-                const response = await fetch(`/query?q=${encodeURIComponent(query)}`);
+                ragStatus.textContent = 'Fetching available LLMs...';
+                const response = await fetch('/api/ollama/models');
                 if (!response.ok) {
-                    throw new Error('Query request failed');
+                    throw new Error(`Failed to fetch models: ${response.statusText}`);
                 }
                 const data = await response.json();
+                const models = data.models;
 
-                resultsList.innerHTML = ''; // Clear loading/previous results
-
-                if (data.results && data.results.length > 0) {
-                    data.results.forEach(result => {
-                        const listItem = document.createElement('li');
-                        listItem.textContent = result;
-                        resultsList.appendChild(listItem);
+                if (models && models.length > 0) {
+                    modelSelect.innerHTML = ''; // Clear any previous options
+                    models.forEach(modelName => {
+                        const option = document.createElement('option');
+                        option.value = modelName;
+                        option.textContent = modelName;
+                        modelSelect.appendChild(option);
                     });
+                    ragStatus.textContent = 'LLMs loaded. Ready to answer questions.';
                 } else {
-                    resultsList.innerHTML = '<li>No relevant documents found.</li>';
+                    ragStatus.textContent = 'No Ollama models found. Please ensure Ollama is running and has models available.';
+                    modelSelect.innerHTML = '<option>No models available</option>';
                 }
-                console.log('Query results:', data);
-
             } catch (error) {
-                console.error('Error during query:', error);
-                resultsList.innerHTML = '<li>Error fetching results. Check console.</li>';
+                console.error('Error fetching Ollama models:', error);
+                ragStatus.textContent = `Error: ${error.message}. Is Ollama running?`;
+                modelSelect.innerHTML = '<option>Failed to load models</option>';
             }
-        }
-    </script>
+        });
 
+        // --- Handle File Upload ---
+        const uploadForm = document.getElementById('upload-form');
+        const statusDiv = document.getElementById('status');
+        uploadForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const formData = new FormData(uploadForm);
+            const fileInput = document.getElementById('file-input');
+            
+            if (!fileInput.files || fileInput.files.length === 0) {
+                statusDiv.textContent = 'Please select a file first.';
+                statusDiv.style.color = 'red';
+                return;
+            }
+
+            statusDiv.textContent = 'Uploading and processing...';
+            statusDiv.style.color = '#333';
+
+            try {
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData,
+                });
+                const result = await response.json();
+                if (response.ok) {
+                    statusDiv.textContent = result.message;
+                    statusDiv.style.color = 'green';
+                } else {
+                    throw new Error(result.detail || 'An unknown error occurred.');
+                }
+            } catch (error) {
+                statusDiv.textContent = `Error: ${error.message}`;
+                statusDiv.style.color = 'red';
+            }
+        });
+
+        // --- Handle RAG Query ---
+        const ragForm = document.getElementById('rag-form');
+        const ragStatus = document.getElementById('rag-status');
+        const ragAnswerContainer = document.getElementById('rag-answer-container');
+        const ragAnswerDiv = document.getElementById('rag-answer');
+        const ragContextDiv = document.getElementById('rag-context');
+
+        ragForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const query = document.getElementById('rag-query-input').value;
+            const selectedModel = document.getElementById('model-select').value;
+
+            if (!query) {
+                ragStatus.textContent = 'Please enter a question.';
+                return;
+            }
+            if (!selectedModel || selectedModel === 'No models available' || selectedModel === 'Failed to load models') {
+                ragStatus.textContent = 'Please select a valid LLM.';
+                return;
+            }
+
+            ragStatus.textContent = `Thinking with ${selectedModel}...`;
+            ragAnswerDiv.textContent = '(Generating response...)';
+            ragContextDiv.innerHTML = '';
+            
+            // Remove old attribution if it exists
+            const oldAttribution = ragAnswerContainer.querySelector('.attribution');
+            if (oldAttribution) {
+                oldAttribution.remove();
+            }
+
+
+            try {
+                const formData = new FormData();
+                formData.append('query', query);
+                formData.append('model', selectedModel);
+
+                const response = await fetch('/query/rag', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    ragAnswerDiv.textContent = result.answer;
+
+                    // Add attribution
+                    const attributionDiv = document.createElement('div');
+                    attributionDiv.className = 'attribution';
+                    attributionDiv.textContent = `Answer generated by ${selectedModel} in response to the question: "${query}"`;
+                    ragAnswerContainer.appendChild(attributionDiv);
+                    
+                    // Display the context that was used
+                    if (result.context && result.context.length > 0) {
+                        ragContextDiv.innerHTML = result.context.map((chunk, index) => `
+                            <div class="context-item">
+                                <p class="meta">Context Chunk ${index + 1}</p>
+                                <p>${chunk.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</p>
+                            </div>
+                        `).join('');
+                    } else {
+                        ragContextDiv.innerHTML = '<p>No specific context was retrieved to generate this answer.</p>';
+                    }
+                    ragStatus.textContent = 'Answer received.';
+                } else {
+                    throw new Error(result.detail || 'Failed to get RAG answer.');
+                }
+            } catch (error) {
+                ragStatus.textContent = `Error: ${error.message}`;
+                ragAnswerDiv.textContent = `Failed to get an answer. ${error.message}`;
+            }
+        });
+    </script>
 </body>
 </html>
