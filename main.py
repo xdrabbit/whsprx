@@ -7,8 +7,16 @@ from sentence_transformers import SentenceTransformer
 import logging
 import requests
 import json
+import uuid
+import websockets
+import asyncio
+from fastapi.responses import StreamingResponse, FileResponse
 
 # --- 1. Application Setup ---
+
+# ComfyUI server details
+COMFYUI_URL = "http://192.168.0.45:8188"
+COMFYUI_CLIENT_ID = str(uuid.uuid4())
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -165,6 +173,77 @@ async def get_ollama_models():
     except Exception as e:
         logger.error(f"An error occurred while fetching Ollama models: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch models from Ollama.")
+
+
+@app.get("/api/comfy/models")
+async def get_comfy_models():
+    """
+    Fetches a curated list of checkpoint models from a local file.
+    """
+    try:
+        with open("comfy_models.txt", "r") as f:
+            models = [line.strip() for line in f if line.strip()]
+        return {"models": models}
+    except FileNotFoundError:
+        logger.error("comfy_models.txt not found. Please create it.")
+        raise HTTPException(status_code=404, detail="comfy_models.txt not found.")
+    except Exception as e:
+        logger.error(f"Could not read comfy_models.txt: {e}")
+        raise HTTPException(status_code=500, detail="Could not read comfy_models.txt.")
+
+
+@app.post("/api/generate-image")
+async def generate_image(prompt: str = Form(...), model: str = Form(...)):
+    """
+    Generates an image using ComfyUI based on a prompt and a selected model.
+    """
+    try:
+        # 1. Load the base workflow
+        with open("comfy_workflow.json", "r") as f:
+            workflow = json.load(f)
+
+        # 2. Modify the workflow with the user's prompt and model choice
+        workflow["6"]["inputs"]["text"] = prompt
+        workflow["4"]["inputs"]["ckpt_name"] = model
+
+        # Log the workflow being sent
+        logger.info(f"Sending the following workflow to ComfyUI:\n{json.dumps(workflow, indent=2)}")
+
+        # 3. Queue the prompt with ComfyUI
+        headers = {'Content-Type': 'application/json'}
+        data = json.dumps({"prompt": workflow, "client_id": COMFYUI_CLIENT_ID}).encode('utf-8')
+        response = requests.post(f"{COMFYUI_URL}/prompt", data=data, headers=headers)
+        response.raise_for_status()
+        prompt_id = response.json()['prompt_id']
+        
+        # 4. Wait for the image to be generated via WebSocket
+        async with websockets.connect(f"ws://{COMFYUI_URL.split('//')[1]}/ws?clientId={COMFYUI_CLIENT_ID}") as websocket:
+            while True:
+                out = await websocket.recv()
+                if isinstance(out, str):
+                    message = json.loads(out)
+                    if message['type'] == 'executed' and message['data']['prompt_id'] == prompt_id:
+                        # We have our image details
+                        data = message['data']['output']['images'][0]
+                        image_path = f"{data['subfolder']}/{data['filename']}"
+                        
+                        # 5. Fetch the generated image from the ComfyUI output directory
+                        image_url = f"{COMFYUI_URL}/view?filename={data['filename']}&subfolder={data['subfolder']}&type={data['type']}"
+                        image_response = requests.get(image_url, stream=True)
+                        image_response.raise_for_status()
+                        
+                        # 6. Stream the image back to the client
+                        return StreamingResponse(image_response.iter_content(1024), media_type=image_response.headers['Content-Type'])
+
+    except websockets.exceptions.ConnectionClosed as e:
+        logger.error(f"WebSocket connection to ComfyUI closed unexpectedly: {e}")
+        raise HTTPException(status_code=503, detail="Lost connection to image generation server.")
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Could not connect to ComfyUI API for image generation: {e}")
+        raise HTTPException(status_code=503, detail="Could not connect to ComfyUI API.")
+    except Exception as e:
+        logger.error(f"An error occurred during image generation: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate image: {e}")
 
 
 @app.post("/query/rag")
