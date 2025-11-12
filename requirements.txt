@@ -5,3 +5,6 @@ chromadb
 sentence-transformers
 requests
 websockets
+comfyui
+python-dotenv
+elevenlabs

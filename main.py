@@ -11,8 +11,14 @@ import uuid
 import websockets
 import asyncio
 from fastapi.responses import StreamingResponse, FileResponse
+from dotenv import load_dotenv
+from elevenlabs import Voice
+from elevenlabs.client import ElevenLabs
 
 # --- 1. Application Setup ---
+
+# Load environment variables from .env file
+load_dotenv()
 
 # ComfyUI server details
 COMFYUI_URL = "http://192.168.0.45:8188"
@@ -51,6 +57,20 @@ except Exception as e:
     logger.error(f"Failed to initialize ChromaDB: {e}")
     # Exit if the database can't be initialized.
     exit()
+
+
+# Initialize the ElevenLabs client
+try:
+    ELEVEN_API_KEY = os.getenv("ELEVEN_API_KEY")
+    if not ELEVEN_API_KEY:
+        logger.warning("ELEVEN_API_KEY not found in environment variables. Text-to-speech will be disabled.")
+        eleven_client = None
+    else:
+        eleven_client = ElevenLabs(api_key=ELEVEN_API_KEY)
+        logger.info("ElevenLabs client initialized.")
+except Exception as e:
+    logger.error(f"Failed to initialize ElevenLabs client: {e}")
+    eleven_client = None
 
 
 # --- 2. Frontend Endpoint ---
@@ -246,6 +266,51 @@ async def generate_image(prompt: str = Form(...), model: str = Form(...)):
         raise HTTPException(status_code=500, detail=f"Failed to generate image: {e}")
 
 
+@app.post("/api/text-to-speech")
+async def text_to_speech(text: str = Form(...), voice_id: str = Form(...)):
+    """
+    Converts text to speech using the ElevenLabs API and streams the audio back.
+    """
+    if not eleven_client:
+        raise HTTPException(status_code=501, detail="Text-to-speech service is not configured.")
+
+    if not text:
+        raise HTTPException(status_code=400, detail="No text provided for speech synthesis.")
+
+    try:
+        # Use the text_to_speech.stream method
+        audio_stream = eleven_client.text_to_speech.stream(
+            text=text,
+            voice_id=voice_id
+        )
+
+        # The stream from the client is an iterator of bytes, which is exactly what StreamingResponse needs.
+        return StreamingResponse(audio_stream, media_type="audio/mpeg")
+
+    except Exception as e:
+        logger.error(f"Error during text-to-speech generation: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate audio: {e}")
+
+
+@app.get("/api/elevenlabs/voices")
+async def get_elevenlabs_voices():
+    """
+    Fetches the list of available voices from the ElevenLabs API.
+    """
+    if not eleven_client:
+        raise HTTPException(status_code=501, detail="Text-to-speech service is not configured.")
+    
+    try:
+        # Fetch available voices from the API
+        voices_response = eleven_client.voices.get_all()
+        # The response contains a 'voices' attribute which is a list of Voice objects
+        voice_list = [{"voice_id": voice.voice_id, "name": voice.name} for voice in voices_response.voices]
+        return {"voices": voice_list}
+    except Exception as e:
+        logger.error(f"Could not fetch ElevenLabs voices: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch voices from ElevenLabs.")
+
+
 @app.post("/query/rag")
 async def query_rag(query: str = Form(...), model: str = Form(...)):
     """
@@ -310,6 +375,58 @@ async def query_rag(query: str = Form(...), model: str = Form(...)):
     except Exception as e:
         logger.error(f"An error occurred during RAG processing: {e}")
         raise HTTPException(status_code=500, detail="An error occurred while generating the answer.")
+
+
+@app.post("/api/generate-image-prompt")
+async def generate_image_prompt(
+    base_prompt: str = Form(...),
+    artistic_direction: str = Form(...),
+    model: str = Form(...)
+):
+    """
+    Uses an LLM to generate a new, more descriptive image prompt based on a base text and artistic direction.
+    Acts as an "AI Art Director".
+    """
+    logger.info(f"Generating new image prompt with model {model}...")
+
+    # This is the "meta-prompt" that instructs the LLM on how to behave.
+    meta_prompt = f"""
+    You are an expert prompt engineer for a text-to-image AI. Your task is to take a base text and an artistic direction, and rewrite them into a single, highly descriptive, and visually rich prompt.
+
+    - Combine the concepts from the base text and the artistic direction.
+    - Enhance the prompt with vivid details, such as lighting, composition, and mood.
+    - Do not include any conversational text, explanations, or quotation marks.
+    - The output should be a single, continuous block of text ready to be fed into an image generation model.
+
+    Base Text: "{base_prompt}"
+
+    Artistic Direction: "{artistic_direction}"
+
+    Generate the new, enhanced image prompt now:
+    """
+
+    try:
+        response = requests.post(
+            "http://127.0.0.1:11434/api/generate",
+            json={
+                "model": model,
+                "prompt": meta_prompt,
+                "stream": False
+            }
+        )
+        response.raise_for_status()
+        
+        new_prompt = response.json().get("response", "").strip()
+        logger.info(f"Generated new prompt: {new_prompt}")
+
+        return {"new_prompt": new_prompt}
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Could not connect to Ollama for prompt generation: {e}")
+        raise HTTPException(status_code=503, detail="Could not connect to Ollama to generate the image prompt.")
+    except Exception as e:
+        logger.error(f"An error occurred during image prompt generation: {e}")
+        raise HTTPException(status_code=500, detail="Failed to generate image prompt.")
 
 
 # To run this application:
