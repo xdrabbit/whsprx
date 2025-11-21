@@ -662,6 +662,225 @@ async def get_pixverse_credits():
         logger.error(f"An error occurred while checking PixVerse credits: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to check credits: {e}")
 
+
+@app.post("/api/pixverse/extend-video")
+async def extend_pixverse_video(
+    source_video_id: int = Form(...),
+    prompt: str = Form(...),
+    duration: int = Form(5),
+    quality: str = Form("540p"),
+    motion_mode: str = Form("normal"),
+    seed: int = Form(0)
+):
+    """
+    Extends an existing PixVerse video.
+    """
+    if not PIXVERSE_API_KEY:
+        raise HTTPException(status_code=501, detail="PixVerse API key is not configured.")
+
+    trace_id = str(uuid.uuid4())
+    headers = {
+        "API-KEY": PIXVERSE_API_KEY,
+        "Content-Type": "application/json",
+        "Ai-trace-id": trace_id
+    }
+    
+    payload = {
+        "source_video_id": source_video_id,
+        "prompt": prompt,
+        "seed": seed,
+        "quality": quality,
+        "duration": duration,
+        "model": "v4.5",
+        "motion_mode": motion_mode
+    }
+
+    logger.info(f"Sending video extension request with trace_id: {trace_id}")
+    logger.info(f"Payload: {json.dumps(payload, indent=2)}")
+
+    try:
+        response = requests.post(f"{PIXVERSE_API_URL}/video/extend/generate", headers=headers, json=payload)
+        logger.info(f"PixVerse Extension Response Status: {response.status_code}")
+        logger.info(f"PixVerse Extension Response Body: {response.text}")
+        
+        response.raise_for_status()
+        data = response.json()
+
+        if data.get("ErrCode") != 0:
+            error_msg = data.get('ErrMsg', 'Unknown error')
+            logger.error(f"PixVerse API Error: {error_msg}")
+            raise HTTPException(status_code=500, detail=f"PixVerse API Error: {error_msg}")
+        
+        video_id = data.get("Resp", {}).get("video_id")
+        if not video_id:
+            raise HTTPException(status_code=500, detail="PixVerse API did not return a video_id.")
+
+        logger.info(f"Successfully extended video with new video_id: {video_id}")
+        return {"video_id": video_id}
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Could not connect to PixVerse API: {e}")
+        raise HTTPException(status_code=503, detail="Could not connect to PixVerse API.")
+    except Exception as e:
+        logger.error(f"An error occurred during video extension: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to extend video: {e}")
+
+
+@app.post("/api/pixverse/upload-media")
+async def upload_pixverse_media(file: UploadFile = File(...)):
+    """
+    Uploads a video or audio file to PixVerse and returns media_id.
+    """
+    if not PIXVERSE_API_KEY:
+        raise HTTPException(status_code=501, detail="PixVerse API key is not configured.")
+
+    trace_id = str(uuid.uuid4())
+    headers = {
+        "API-KEY": PIXVERSE_API_KEY,
+        "Ai-trace-id": trace_id
+    }
+    
+    try:
+        file_content = await file.read()
+        filename = file.filename or "upload"
+        content_type = file.content_type or "application/octet-stream"
+        
+        files = {'file': (filename, file_content, content_type)}
+        
+        logger.info(f"Uploading media to PixVerse with trace_id: {trace_id}")
+        response = requests.post(f"{PIXVERSE_API_URL}/media/upload", headers=headers, files=files)
+        
+        logger.info(f"Media Upload Response Status: {response.status_code}")
+        logger.info(f"Media Upload Response Body: {response.text}")
+        
+        response.raise_for_status()
+        data = response.json()
+
+        if data.get("ErrCode") != 0:
+            error_msg = data.get('ErrMsg', 'Unknown error')
+            logger.error(f"PixVerse Media Upload Error: {error_msg}")
+            raise HTTPException(status_code=500, detail=f"PixVerse Media Upload Error: {error_msg}")
+
+        resp_data = data.get("Resp", {})
+        logger.info(f"Successfully uploaded media: {resp_data}")
+        return resp_data
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Could not connect to PixVerse API: {e}")
+        raise HTTPException(status_code=503, detail="Could not connect to PixVerse API.")
+    except Exception as e:
+        logger.error(f"An error occurred during media upload: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to upload media: {e}")
+
+
+@app.post("/api/pixverse/lip-sync")
+async def generate_lip_sync(
+    source_video_id: int = Form(...),
+    lip_sync_tts_content: str = Form(None),
+    lip_sync_tts_speaker_id: str = Form("auto"),
+    audio_media_id: int = Form(None)
+):
+    """
+    Generates lip-synced video using either TTS or uploaded audio.
+    """
+    if not PIXVERSE_API_KEY:
+        raise HTTPException(status_code=501, detail="PixVerse API key is not configured.")
+
+    if not lip_sync_tts_content and not audio_media_id:
+        raise HTTPException(status_code=400, detail="Either lip_sync_tts_content or audio_media_id must be provided.")
+
+    trace_id = str(uuid.uuid4())
+    headers = {
+        "API-KEY": PIXVERSE_API_KEY,
+        "Content-Type": "application/json",
+        "Ai-trace-id": trace_id
+    }
+    
+    payload = {
+        "source_video_id": source_video_id
+    }
+    
+    # Add TTS parameters if text is provided
+    if lip_sync_tts_content:
+        payload["lip_sync_tts_content"] = lip_sync_tts_content
+        payload["lip_sync_tts_speaker_id"] = lip_sync_tts_speaker_id
+    
+    # Add audio media ID if provided
+    if audio_media_id:
+        payload["audio_media_id"] = audio_media_id
+
+    logger.info(f"Sending lip sync request with trace_id: {trace_id}")
+    logger.info(f"Payload: {json.dumps(payload, indent=2)}")
+
+    try:
+        response = requests.post(f"{PIXVERSE_API_URL}/video/lip_sync/generate", headers=headers, json=payload)
+        logger.info(f"PixVerse Lip Sync Response Status: {response.status_code}")
+        logger.info(f"PixVerse Lip Sync Response Body: {response.text}")
+        
+        response.raise_for_status()
+        data = response.json()
+
+        if data.get("ErrCode") != 0:
+            error_msg = data.get('ErrMsg', 'Unknown error')
+            logger.error(f"PixVerse API Error: {error_msg}")
+            raise HTTPException(status_code=500, detail=f"PixVerse API Error: {error_msg}")
+        
+        video_id = data.get("Resp", {}).get("video_id")
+        if not video_id:
+            raise HTTPException(status_code=500, detail="PixVerse API did not return a video_id.")
+
+        logger.info(f"Successfully created lip sync video with video_id: {video_id}")
+        return {"video_id": video_id}
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Could not connect to PixVerse API: {e}")
+        raise HTTPException(status_code=503, detail="Could not connect to PixVerse API.")
+    except Exception as e:
+        logger.error(f"An error occurred during lip sync generation: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate lip sync: {e}")
+
+
+@app.get("/api/pixverse/tts-speakers")
+async def get_tts_speakers(page_num: int = 1, page_size: int = 50):
+    """
+    Gets the list of available TTS speakers for lip sync.
+    """
+    if not PIXVERSE_API_KEY:
+        raise HTTPException(status_code=501, detail="PixVerse API key is not configured.")
+
+    trace_id = str(uuid.uuid4())
+    headers = {
+        "API-KEY": PIXVERSE_API_KEY,
+        "Content-Type": "application/json",
+        "Ai-trace-id": trace_id
+    }
+    
+    try:
+        response = requests.get(
+            f"{PIXVERSE_API_URL}/video/lip_sync/tts_list",
+            headers=headers,
+            params={"page_num": page_num, "page_size": page_size}
+        )
+        logger.info(f"TTS Speakers Response Status: {response.status_code}")
+        
+        response.raise_for_status()
+        data = response.json()
+
+        if data.get("ErrCode") != 0:
+            error_msg = data.get('ErrMsg', 'Unknown error')
+            logger.error(f"PixVerse API Error: {error_msg}")
+            raise HTTPException(status_code=500, detail=f"PixVerse API Error: {error_msg}")
+
+        return data.get("Resp", {})
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Could not connect to PixVerse API: {e}")
+        raise HTTPException(status_code=503, detail="Could not connect to PixVerse API.")
+    except Exception as e:
+        logger.error(f"An error occurred while fetching TTS speakers: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch TTS speakers: {e}")
+
+
 # --- 5. Application Entry Point ---
 @app.get("/")
 async def read_main():

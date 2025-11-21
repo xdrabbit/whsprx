@@ -516,3 +516,272 @@ def test_regression_comfyui_models_endpoint():
         assert len(data["models"]) == 2
         assert data["models"][0]["model_name"] == "model1.safetensors"
 
+
+# --- PixVerse Extended Features Tests ---
+
+def test_pixverse_extend_video_success():
+    """
+    Tests the video extension endpoint with successful extension.
+    """
+    mock_response = {
+        "ErrCode": 0,
+        "ErrMsg": "Success",
+        "Resp": {"video_id": 999888777}
+    }
+    
+    with patch('requests.post') as mock_post:
+        mock_post.return_value.status_code = 200
+        mock_post.return_value.json.return_value = mock_response
+        mock_post.return_value.text = str(mock_response)
+        mock_post.return_value.raise_for_status = MagicMock()
+        
+        response = client.post(
+            "/api/pixverse/extend-video",
+            data={
+                "source_video_id": 123456,
+                "prompt": "camera continues forward",
+                "duration": 5,
+                "quality": "540p",
+                "motion_mode": "normal",
+                "seed": 0
+            }
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["video_id"] == 999888777
+        
+        # Verify the API was called correctly
+        mock_post.assert_called_once()
+        called_url = mock_post.call_args[0][0]
+        assert "video/extend/generate" in called_url
+        sent_json = mock_post.call_args.kwargs['json']
+        assert sent_json['source_video_id'] == 123456
+        assert sent_json['prompt'] == "camera continues forward"
+
+
+def test_pixverse_upload_media_success():
+    """
+    Tests uploading media (audio/video) to PixVerse.
+    """
+    mock_response = {
+        "ErrCode": 0,
+        "ErrMsg": "success",
+        "Resp": {
+            "media_id": 555444,
+            "media_type": "audio",
+            "url": "https://example.com/audio.mp3"
+        }
+    }
+    
+    with patch('requests.post') as mock_post:
+        mock_post.return_value.status_code = 200
+        mock_post.return_value.json.return_value = mock_response
+        mock_post.return_value.text = str(mock_response)
+        mock_post.return_value.raise_for_status = MagicMock()
+        
+        audio_content = b'fake audio data'
+        response = client.post(
+            "/api/pixverse/upload-media",
+            files={"file": ("test.mp3", audio_content, "audio/mpeg")}
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["media_id"] == 555444
+        assert data["media_type"] == "audio"
+        assert data["url"] == "https://example.com/audio.mp3"
+        
+        # Verify API call
+        mock_post.assert_called_once()
+        called_url = mock_post.call_args[0][0]
+        assert "media/upload" in called_url
+
+
+def test_pixverse_lip_sync_tts_success():
+    """
+    Tests lip sync generation with TTS.
+    """
+    mock_response = {
+        "ErrCode": 0,
+        "ErrMsg": "Success",
+        "Resp": {"video_id": 777666555}
+    }
+    
+    with patch('requests.post') as mock_post:
+        mock_post.return_value.status_code = 200
+        mock_post.return_value.json.return_value = mock_response
+        mock_post.return_value.text = str(mock_response)
+        mock_post.return_value.raise_for_status = MagicMock()
+        
+        response = client.post(
+            "/api/pixverse/lip-sync",
+            data={
+                "source_video_id": 123456,
+                "lip_sync_tts_content": "Hello world",
+                "lip_sync_tts_speaker_id": "1"
+            }
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["video_id"] == 777666555
+        
+        # Verify API call
+        mock_post.assert_called_once()
+        called_url = mock_post.call_args[0][0]
+        assert "lip_sync/generate" in called_url
+        sent_json = mock_post.call_args.kwargs['json']
+        assert sent_json['source_video_id'] == 123456
+        assert sent_json['lip_sync_tts_content'] == "Hello world"
+        assert sent_json['lip_sync_tts_speaker_id'] == "1"
+
+
+def test_pixverse_lip_sync_audio_success():
+    """
+    Tests lip sync generation with uploaded audio.
+    """
+    mock_response = {
+        "ErrCode": 0,
+        "ErrMsg": "Success",
+        "Resp": {"video_id": 888999000}
+    }
+    
+    with patch('requests.post') as mock_post:
+        mock_post.return_value.status_code = 200
+        mock_post.return_value.json.return_value = mock_response
+        mock_post.return_value.text = str(mock_response)
+        mock_post.return_value.raise_for_status = MagicMock()
+        
+        response = client.post(
+            "/api/pixverse/lip-sync",
+            data={
+                "source_video_id": 123456,
+                "audio_media_id": 555444
+            }
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["video_id"] == 888999000
+        
+        # Verify audio_media_id was included
+        sent_json = mock_post.call_args.kwargs['json']
+        assert sent_json['audio_media_id'] == 555444
+
+
+def test_pixverse_lip_sync_no_input():
+    """
+    Tests lip sync endpoint when neither TTS nor audio is provided.
+    """
+    response = client.post(
+        "/api/pixverse/lip-sync",
+        data={"source_video_id": 123456}
+    )
+    
+    assert response.status_code == 400
+    assert "must be provided" in response.json()['detail']
+
+
+def test_pixverse_tts_speakers_success():
+    """
+    Tests fetching TTS speaker list.
+    """
+    mock_response = {
+        "ErrCode": 0,
+        "ErrMsg": "Success",
+        "Resp": {
+            "total": 3,
+            "data": [
+                {"speaker_id": "1", "name": "Emily"},
+                {"speaker_id": "2", "name": "James"},
+                {"speaker_id": "auto", "name": "Auto"}
+            ]
+        }
+    }
+    
+    with patch('requests.get') as mock_get:
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.return_value = mock_response
+        mock_get.return_value.raise_for_status = MagicMock()
+        
+        response = client.get("/api/pixverse/tts-speakers")
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 3
+        assert len(data["data"]) == 3
+        assert data["data"][0]["name"] == "Emily"
+        assert data["data"][2]["speaker_id"] == "auto"
+        
+        # Verify API call
+        mock_get.assert_called_once()
+        called_url = mock_get.call_args[0][0]
+        assert "lip_sync/tts_list" in called_url
+
+
+def test_pixverse_extend_video_no_api_key():
+    """
+    Tests video extension when API key is not configured.
+    """
+    with patch('main.PIXVERSE_API_KEY', None):
+        response = client.post(
+            "/api/pixverse/extend-video",
+            data={
+                "source_video_id": 123456,
+                "prompt": "test"
+            }
+        )
+        assert response.status_code == 501
+
+
+def test_pixverse_upload_media_api_error():
+    """
+    Tests media upload when PixVerse returns an error.
+    """
+    mock_response = {
+        "ErrCode": 400,
+        "ErrMsg": "Invalid file format",
+        "Resp": {}
+    }
+    
+    with patch('requests.post') as mock_post:
+        mock_post.return_value.status_code = 200
+        mock_post.return_value.json.return_value = mock_response
+        mock_post.return_value.text = str(mock_response)
+        mock_post.return_value.raise_for_status = MagicMock()
+        
+        response = client.post(
+            "/api/pixverse/upload-media",
+            files={"file": ("test.txt", b"invalid", "text/plain")}
+        )
+        
+        assert response.status_code == 500
+        assert "Invalid file format" in response.json()['detail']
+
+
+# --- Regression Test for Extended Features ---
+
+def test_regression_original_video_generation_still_works():
+    """
+    Regression test: Ensure original video generation still works after adding extensions.
+    """
+    mock_response = {
+        "ErrCode": 0,
+        "ErrMsg": "success",
+        "Resp": {"video_id": 123, "credits": 45}
+    }
+    
+    with patch('requests.post') as mock_post:
+        mock_post.return_value.status_code = 200
+        mock_post.return_value.json.return_value = mock_response
+        mock_post.return_value.raise_for_status = MagicMock()
+        
+        response = client.post(
+            "/api/pixverse/generate-video",
+            data={"prompt": "test video"}
+        )
+        
+        assert response.status_code == 200
+        assert response.json()["video_id"] == 123
+

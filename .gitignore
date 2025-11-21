@@ -10,3 +10,4 @@ db/
 build/
 dist/
 *.egg-info
+server.pid

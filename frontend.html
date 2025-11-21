@@ -113,9 +113,235 @@
             border-radius: 4px;
             box-shadow: 0 2px 8px rgba(0,0,0,0.1);
         }
+        
+        /* Ghost Guide Mode Styles */
+        #ghost-guide-btn {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            color: white;
+            font-size: 1.5rem;
+            cursor: pointer;
+            box-shadow: 0 4px 20px rgba(102, 126, 234, 0.4);
+            z-index: 999;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        #ghost-guide-btn:hover {
+            transform: scale(1.1);
+            box-shadow: 0 6px 30px rgba(102, 126, 234, 0.6);
+        }
+        
+        #ghost-guide-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            z-index: 1000;
+            display: none;
+            opacity: 0;
+            transition: opacity 0.5s ease-in-out;
+        }
+        
+        #ghost-guide-overlay.visible {
+            opacity: 1;
+        }
+        
+        #ghost-guide-content {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            max-width: 800px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-radius: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+            padding: 2rem;
+            color: #fff;
+        }
+        
+        #ghost-guide-content h2 {
+            margin-top: 0;
+            font-size: 2rem;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        #ghost-guide-content h3 {
+            color: #667eea;
+            margin-top: 1.5rem;
+            font-size: 1.3rem;
+        }
+        
+        #ghost-guide-content p, #ghost-guide-content ul {
+            color: rgba(255, 255, 255, 0.95);
+            line-height: 1.6;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+        }
+        
+        #ghost-guide-content ul {
+            list-style: none;
+            padding-left: 0;
+        }
+        
+        #ghost-guide-content li {
+            padding: 0.5rem 0;
+            padding-left: 1.5rem;
+            position: relative;
+        }
+        
+        #ghost-guide-content li:before {
+            content: "✨";
+            position: absolute;
+            left: 0;
+        }
+        
+        #ghost-guide-close {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            background: rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 1.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+        }
+        
+        #ghost-guide-close:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: rotate(90deg);
+        }
+        
+        .feature-section {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            padding: 1rem;
+            margin: 1rem 0;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
     </style>
 </head>
 <body>
+    <!-- Ghost Guide Button -->
+    <button id="ghost-guide-btn" title="Ghost Guide Mode (?)">👻</button>
+    
+    <!-- Ghost Guide Overlay -->
+    <div id="ghost-guide-overlay">
+        <div id="ghost-guide-content">
+            <button id="ghost-guide-close">×</button>
+            <h2>👻 Ghost Guide Mode</h2>
+            <p style="font-size: 1.1rem; opacity: 0.9;">Your helpful AI assistant that appears when you need it, and fades away when you're focused.</p>
+            
+            <div class="feature-section">
+                <h3>📄 Document Upload & Search</h3>
+                <ul>
+                    <li>Upload text files to build your knowledge base</li>
+                    <li>Search semantically - finds meaning, not just keywords</li>
+                    <li>View source documents with metadata</li>
+                </ul>
+            </div>
+            
+            <div class="feature-section">
+                <h3>🤖 RAG (Retrieval-Augmented Generation)</h3>
+                <ul>
+                    <li>Ask questions about your uploaded documents</li>
+                    <li>AI retrieves relevant context and generates answers</li>
+                    <li>Choose your LLM model from the dropdown</li>
+                    <li>See which documents informed the answer</li>
+                </ul>
+            </div>
+            
+            <div class="feature-section">
+                <h3>🎨 AI Image Generation</h3>
+                <ul>
+                    <li>Use the AI Art Director to craft detailed prompts</li>
+                    <li>Select ComfyUI models dynamically</li>
+                    <li>Generate images at 512x512 for faster results</li>
+                    <li>Real-time progress via WebSocket</li>
+                </ul>
+            </div>
+            
+            <div class="feature-section">
+                <h3>🎬 PixVerse Video Generation</h3>
+                <ul>
+                    <li><strong>Text-to-Video:</strong> Describe your scene, get a video</li>
+                    <li><strong>Image-to-Video:</strong> Upload image + motion prompt</li>
+                    <li><strong>Advanced Options:</strong> Duration, quality, motion mode, camera movement, seed</li>
+                    <li>Monitor credit balance with visual gauge</li>
+                </ul>
+            </div>
+            
+            <div class="feature-section">
+                <h3>🎥 Video Actions (After Generation)</h3>
+                <ul>
+                    <li><strong>Extend Video:</strong> Add 5 more seconds to continue the story</li>
+                    <li><strong>Lip Sync:</strong> Make characters speak with synchronized lip movements</li>
+                </ul>
+                
+                <h4 style="margin: 1rem 0 0.5rem 0; color: #fff;">🎤 Lip Sync Step-by-Step:</h4>
+                <ol style="list-style: decimal; padding-left: 2rem; margin: 0;">
+                    <li style="padding-left: 0;"><strong>Generate a video</strong> with a character/person visible</li>
+                    <li style="padding-left: 0;"><strong>Wait for completion</strong> - Video Actions section appears</li>
+                    <li style="padding-left: 0;"><strong>Choose mode:</strong>
+                        <ul style="list-style: disc; padding-left: 1.5rem;">
+                            <li style="padding-left: 0;"><strong>Text-to-Speech:</strong> Type text, select voice (15 options), submit</li>
+                            <li style="padding-left: 0;"><strong>Upload Audio:</strong> Select audio file, submit</li>
+                        </ul>
+                    </li>
+                    <li style="padding-left: 0;"><strong>System generates</strong> new video with lip-synced speech</li>
+                    <li style="padding-left: 0;"><strong>Result:</strong> Character's lips match the audio perfectly!</li>
+                </ol>
+            </div>
+            
+            <div class="feature-section">
+                <h3>🎤 Text-to-Speech</h3>
+                <ul>
+                    <li>Convert any text to natural speech</li>
+                    <li>Multiple voice options via ElevenLabs</li>
+                    <li>Download as MP3</li>
+                </ul>
+            </div>
+            
+            <div class="feature-section">
+                <h3>💡 Ghost Guide Tips</h3>
+                <ul>
+                    <li><strong>Left-click 👻</strong> anytime for help</li>
+                    <li><strong>Right-click 👻</strong> to dismiss for entire session</li>
+                    <li>Guide appears automatically after 2s of inactivity</li>
+                    <li>Fades away when you move mouse or type</li>
+                    <li>Press <strong>ESC</strong> to dismiss temporarily</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+    
     <div class="container">
         <h1>Document RAG Search</h1>
 
@@ -272,10 +498,155 @@
             
             <div id="pixverse-status"></div>
             <div id="generated-video-container"></div>
+            
+            <!-- Video Actions (Extend & Lip Sync) - Hidden until video is ready -->
+            <div id="video-actions" style="display: none; margin-top: 2rem; padding-top: 2rem; border-top: 1px solid #eee;">
+                <h3>Video Actions</h3>
+                
+                <!-- Extend Video Form -->
+                <div style="margin-bottom: 2rem; padding: 1rem; background: #f0f8ff; border-radius: 4px;">
+                    <h4 style="margin-top: 0;">🎬 Extend Video</h4>
+                    <p style="font-size: 0.9rem; color: #666;">Continue the story by extending your video by 5 more seconds</p>
+                    <form id="extend-video-form">
+                        <label for="extend-prompt">Extension Prompt:</label>
+                        <input type="text" id="extend-prompt" placeholder="e.g., camera pans to reveal a mountain" required>
+                        <button type="submit">Extend Video</button>
+                    </form>
+                </div>
+                
+                <!-- Lip Sync Form -->
+                <div style="padding: 1rem; background: #fff5f0; border-radius: 4px;">
+                    <h4 style="margin-top: 0;">🎤 Add Lip Sync</h4>
+                    <p style="font-size: 0.9rem; color: #666;">Make characters speak with synchronized lip movements</p>
+                    <form id="lip-sync-form">
+                        <div id="lip-sync-mode-toggle" style="margin-bottom: 1rem;">
+                            <label style="margin-right: 1rem;">
+                                <input type="radio" name="lipSyncMode" value="tts" checked> Text-to-Speech
+                            </label>
+                            <label>
+                                <input type="radio" name="lipSyncMode" value="audio"> Upload Audio
+                            </label>
+                        </div>
+                        
+                        <!-- TTS Mode -->
+                        <div id="tts-mode" style="display: block;">
+                            <label for="tts-text">Speech Text:</label>
+                            <textarea id="tts-text" placeholder="e.g., Hello! Welcome to my world." rows="3"></textarea>
+                            
+                            <label for="tts-speaker">Voice:</label>
+                            <select id="tts-speaker">
+                                <option value="auto">Auto (Detect from video)</option>
+                            </select>
+                        </div>
+                        
+                        <!-- Audio Upload Mode -->
+                        <div id="audio-mode" style="display: none;">
+                            <label for="audio-file">Upload Audio File:</label>
+                            <input type="file" id="audio-file" accept="audio/*">
+                            <div id="audio-upload-status" style="margin-top: 0.5rem; font-size: 0.9rem;"></div>
+                        </div>
+                        
+                        <button type="submit">Generate Lip Sync</button>
+                    </form>
+                </div>
+            </div>
         </div>
     </div>
 
     <script>
+        // --- Ghost Guide Mode ---
+        let ghostGuideTimeout;
+        let userActivityTimeout;
+        const ghostGuideOverlay = document.getElementById('ghost-guide-overlay');
+        const ghostGuideBtn = document.getElementById('ghost-guide-btn');
+        const ghostGuideClose = document.getElementById('ghost-guide-close');
+        let isGhostGuideManuallyOpened = false;
+        let ghostGuideDismissed = false;  // Track if user dismissed for session
+        
+        function showGhostGuide() {
+            if (ghostGuideDismissed) return;  // Don't auto-show if dismissed for session
+            ghostGuideOverlay.style.display = 'block';
+            // Trigger reflow to enable transition
+            ghostGuideOverlay.offsetHeight;
+            ghostGuideOverlay.classList.add('visible');
+        }
+        
+        function hideGhostGuide() {
+            ghostGuideOverlay.classList.remove('visible');
+            setTimeout(() => {
+                ghostGuideOverlay.style.display = 'none';
+            }, 500); // Match transition duration
+        }
+        
+        function resetUserActivityTimer() {
+            // Clear existing timeout
+            clearTimeout(userActivityTimeout);
+            
+            // If guide is visible and not manually opened, hide it
+            if (ghostGuideOverlay.classList.contains('visible') && !isGhostGuideManuallyOpened) {
+                hideGhostGuide();
+            }
+            
+            // Set new timeout to show guide after 2 seconds of inactivity
+            userActivityTimeout = setTimeout(() => {
+                if (!isGhostGuideManuallyOpened) {
+                    showGhostGuide();
+                }
+            }, 2000);
+        }
+        
+        // Left-click to open, right-click to dismiss for session
+        ghostGuideBtn.addEventListener('click', () => {
+            isGhostGuideManuallyOpened = true;
+            ghostGuideDismissed = false;  // Manual click reactivates Ghost Guide
+            clearTimeout(userActivityTimeout);
+            ghostGuideOverlay.style.display = 'block';
+            ghostGuideOverlay.offsetHeight;
+            ghostGuideOverlay.classList.add('visible');
+        });
+        
+        ghostGuideBtn.addEventListener('contextmenu', (e) => {
+            e.preventDefault();  // Prevent default context menu
+            ghostGuideDismissed = true;
+            isGhostGuideManuallyOpened = false;
+            hideGhostGuide();
+            console.log('👻 Ghost Guide dismissed for session. Left-click 👻 to reactivate.');
+        });
+        
+        // Close button
+        ghostGuideClose.addEventListener('click', () => {
+            isGhostGuideManuallyOpened = false;
+            hideGhostGuide();
+            resetUserActivityTimer();
+        });
+        
+        // Close on ESC key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && ghostGuideOverlay.classList.contains('visible')) {
+                isGhostGuideManuallyOpened = false;
+                hideGhostGuide();
+                resetUserActivityTimer();
+            }
+        });
+        
+        // Close on overlay click (not content)
+        ghostGuideOverlay.addEventListener('click', (e) => {
+            if (e.target === ghostGuideOverlay) {
+                isGhostGuideManuallyOpened = false;
+                hideGhostGuide();
+                resetUserActivityTimer();
+            }
+        });
+        
+        // Track user activity
+        document.addEventListener('mousemove', resetUserActivityTimer);
+        document.addEventListener('keydown', resetUserActivityTimer);
+        document.addEventListener('click', resetUserActivityTimer);
+        document.addEventListener('scroll', resetUserActivityTimer);
+        
+        // Start the inactivity timer on page load
+        resetUserActivityTimer();
+        
         // --- Populate Ollama Models ---
         document.addEventListener('DOMContentLoaded', async () => {
             const modelSelect = document.getElementById('model-select');
@@ -774,8 +1145,12 @@
                 pixverseStatus.style.color = 'red';
             }
         });
+        
+        // --- Store current video ID for actions ---
+        let currentVideoId = null;
 
         async function pollVideoStatus(videoId) {
+            currentVideoId = videoId; // Store for later use
             console.log(`Starting polling for video_id: ${videoId}`);
             const interval = setInterval(async () => {
                 try {
@@ -813,6 +1188,9 @@
                         generatedVideoContainer.innerHTML = '';
                         generatedVideoContainer.appendChild(video);
                         
+                        // Show video action buttons
+                        document.getElementById('video-actions').style.display = 'block';
+                        
                         // Refresh credits after successful generation
                         fetchPixverseCredits();
                     } else if (result.status === 7 || result.status === 8) {
@@ -831,6 +1209,203 @@
                 }
             }, 5000); // Poll every 5 seconds
         }
+        
+        // --- Fetch TTS Speakers ---
+        async function fetchTTSSpeakers() {
+            try {
+                const response = await fetch('/api/pixverse/tts-speakers');
+                if (!response.ok) return;
+                
+                const data = await response.json();
+                const speakerSelect = document.getElementById('tts-speaker');
+                
+                if (data.data && data.data.length > 0) {
+                    // Keep Auto option and add all speakers
+                    speakerSelect.innerHTML = '<option value="auto">Auto (Detect from video)</option>';
+                    data.data.forEach(speaker => {
+                        const option = document.createElement('option');
+                        option.value = speaker.speaker_id;
+                        option.textContent = speaker.name;
+                        speakerSelect.appendChild(option);
+                    });
+                }
+            } catch (error) {
+                console.error('Error fetching TTS speakers:', error);
+            }
+        }
+        
+        // Fetch TTS speakers on page load
+        fetchTTSSpeakers();
+        
+        // --- Toggle Lip Sync Mode ---
+        document.querySelectorAll('input[name="lipSyncMode"]').forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                const ttsMode = document.getElementById('tts-mode');
+                const audioMode = document.getElementById('audio-mode');
+                
+                if (e.target.value === 'tts') {
+                    ttsMode.style.display = 'block';
+                    audioMode.style.display = 'none';
+                } else {
+                    ttsMode.style.display = 'none';
+                    audioMode.style.display = 'block';
+                }
+            });
+        });
+        
+        // --- Handle Video Extension ---
+        document.getElementById('extend-video-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            if (!currentVideoId) {
+                pixverseStatus.textContent = 'No video available to extend.';
+                pixverseStatus.style.color = 'red';
+                return;
+            }
+            
+            const prompt = document.getElementById('extend-prompt').value;
+            if (!prompt) return;
+            
+            pixverseStatus.textContent = 'Extending video...';
+            pixverseStatus.style.color = '#333';
+            document.getElementById('video-actions').style.display = 'none';
+            
+            try {
+                const formData = new FormData();
+                formData.append('source_video_id', currentVideoId);
+                formData.append('prompt', prompt);
+                formData.append('duration', '5');
+                formData.append('quality', '540p');
+                formData.append('motion_mode', 'normal');
+                formData.append('seed', '0');
+                
+                const response = await fetch('/api/pixverse/extend-video', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const result = await response.json();
+                if (!response.ok) {
+                    throw new Error(result.detail || 'Failed to extend video');
+                }
+                
+                const newVideoId = result.video_id;
+                pixverseStatus.textContent = `Extension started with ID: ${newVideoId}. Polling...`;
+                
+                // Clear the extend form
+                document.getElementById('extend-prompt').value = '';
+                
+                // Start polling for the extended video
+                pollVideoStatus(newVideoId);
+                
+            } catch (error) {
+                pixverseStatus.textContent = `Error: ${error.message}`;
+                pixverseStatus.style.color = 'red';
+            }
+        });
+        
+        // --- Handle Lip Sync ---
+        let uploadedAudioMediaId = null;
+        
+        document.getElementById('lip-sync-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            if (!currentVideoId) {
+                pixverseStatus.textContent = 'No video available for lip sync.';
+                pixverseStatus.style.color = 'red';
+                return;
+            }
+            
+            const mode = document.querySelector('input[name="lipSyncMode"]:checked').value;
+            const formData = new FormData();
+            formData.append('source_video_id', currentVideoId);
+            
+            if (mode === 'tts') {
+                const text = document.getElementById('tts-text').value;
+                const speaker = document.getElementById('tts-speaker').value;
+                
+                if (!text) {
+                    pixverseStatus.textContent = 'Please enter speech text.';
+                    pixverseStatus.style.color = 'red';
+                    return;
+                }
+                
+                formData.append('lip_sync_tts_content', text);
+                formData.append('lip_sync_tts_speaker_id', speaker);
+                
+            } else {
+                // Audio mode - need to upload audio first
+                const audioFile = document.getElementById('audio-file').files[0];
+                
+                if (!audioFile && !uploadedAudioMediaId) {
+                    pixverseStatus.textContent = 'Please select an audio file.';
+                    pixverseStatus.style.color = 'red';
+                    return;
+                }
+                
+                // Upload audio if not already uploaded
+                if (audioFile && !uploadedAudioMediaId) {
+                    try {
+                        pixverseStatus.textContent = 'Uploading audio...';
+                        const audioFormData = new FormData();
+                        audioFormData.append('file', audioFile);
+                        
+                        const uploadResponse = await fetch('/api/pixverse/upload-media', {
+                            method: 'POST',
+                            body: audioFormData
+                        });
+                        
+                        const uploadResult = await uploadResponse.json();
+                        if (!uploadResponse.ok) {
+                            throw new Error(uploadResult.detail || 'Failed to upload audio');
+                        }
+                        
+                        uploadedAudioMediaId = uploadResult.media_id;
+                        document.getElementById('audio-upload-status').textContent = `✓ Audio uploaded (ID: ${uploadedAudioMediaId})`;
+                        document.getElementById('audio-upload-status').style.color = 'green';
+                        
+                    } catch (error) {
+                        pixverseStatus.textContent = `Audio upload error: ${error.message}`;
+                        pixverseStatus.style.color = 'red';
+                        return;
+                    }
+                }
+                
+                formData.append('audio_media_id', uploadedAudioMediaId);
+            }
+            
+            pixverseStatus.textContent = 'Generating lip sync...';
+            pixverseStatus.style.color = '#333';
+            document.getElementById('video-actions').style.display = 'none';
+            
+            try {
+                const response = await fetch('/api/pixverse/lip-sync', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const result = await response.json();
+                if (!response.ok) {
+                    throw new Error(result.detail || 'Failed to generate lip sync');
+                }
+                
+                const newVideoId = result.video_id;
+                pixverseStatus.textContent = `Lip sync started with ID: ${newVideoId}. Polling...`;
+                
+                // Clear forms
+                document.getElementById('tts-text').value = '';
+                document.getElementById('audio-file').value = '';
+                uploadedAudioMediaId = null;
+                document.getElementById('audio-upload-status').textContent = '';
+                
+                // Start polling for the lip sync video
+                pollVideoStatus(newVideoId);
+                
+            } catch (error) {
+                pixverseStatus.textContent = `Error: ${error.message}`;
+                pixverseStatus.style.color = 'red';
+            }
+        });
     </script>
 </body>
 </html>
