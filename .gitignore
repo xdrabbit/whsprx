@@ -3,6 +3,11 @@ venv/
 __pycache__/
 *.pyc
 
+# Environment variables (DO NOT COMMIT API KEYS!)
+.env
+.env.local
+.env.*.local
+
 # Database
 db/
 
