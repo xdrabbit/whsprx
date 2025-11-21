@@ -285,7 +285,18 @@
                     <li>Select ComfyUI models dynamically</li>
                     <li>Generate images at 512x512 for faster results</li>
                     <li>Real-time progress via WebSocket</li>
+                    <li><strong>💬 Chat About Images:</strong> After generation, chat with AI about your image!</li>
                 </ul>
+                
+                <h4 style="margin: 1rem 0 0.5rem 0; color: #fff;">💬 Image Chat Feature:</h4>
+                <ol style="list-style: decimal; padding-left: 2rem; margin: 0;">
+                    <li style="padding-left: 0;"><strong>Generate an image</strong> using the Visualize section</li>
+                    <li style="padding-left: 0;"><strong>Chat interface appears</strong> automatically below the image</li>
+                    <li style="padding-left: 0;"><strong>Ask questions:</strong> "What colors?", "Describe this", "What's the mood?"</li>
+                    <li style="padding-left: 0;"><strong>Get suggestions:</strong> "How can I improve this?"</li>
+                    <li style="padding-left: 0;"><strong>Choose vision model:</strong> LLaVA or BakLLaVA</li>
+                    <li style="padding-left: 0;"><strong>Iterate:</strong> Use AI suggestions to refine and regenerate</li>
+                </ol>
             </div>
             
             <div class="feature-section">
@@ -301,7 +312,7 @@
             <div class="feature-section">
                 <h3>🎥 Video Actions (After Generation)</h3>
                 <ul>
-                    <li><strong>Extend Video:</strong> Add 5 more seconds to continue the story</li>
+                    <li><strong>Extend Video:</strong> Add 10 more seconds to continue the story</li>
                     <li><strong>Lip Sync:</strong> Make characters speak with synchronized lip movements</li>
                 </ul>
                 
@@ -394,6 +405,25 @@
                     </form>
                     <div id="visualize-status"></div>
                     <div id="generated-image-container"></div>
+                    
+                    <!-- AI Image Chat Interface -->
+                    <div id="image-chat-section" style="display: none; margin-top: 1.5rem; border-top: 2px solid #667eea; padding-top: 1.5rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                            <h4 style="margin: 0; color: #667eea;">💬 Chat About This Image</h4>
+                            <select id="vision-model-select" style="padding: 0.3rem; border-radius: 4px; border: 1px solid #ddd;">
+                                <option value="llava:latest">LLaVA</option>
+                                <option value="bakllava:latest">BakLLaVA</option>
+                            </select>
+                        </div>
+                        <div id="chat-messages" style="max-height: 300px; overflow-y: auto; background: #f8f9fa; padding: 1rem; border-radius: 8px; margin-bottom: 1rem; border: 1px solid #e0e0e0;">
+                            <p style="color: #666; font-size: 0.9rem; text-align: center; margin: 2rem 0;">Ask me anything about this image! 🎨</p>
+                        </div>
+                        <form id="image-chat-form" style="display: flex; gap: 0.5rem;">
+                            <input type="text" id="chat-message-input" placeholder="e.g., What colors are dominant? Can you describe this?" style="flex: 1; padding: 0.8rem; border-radius: 4px; border: 1px solid #ddd;">
+                            <button type="submit" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; padding: 0.8rem 1.5rem; border-radius: 4px; cursor: pointer; font-weight: 600;">Send</button>
+                        </form>
+                        <div id="chat-status" style="font-size: 0.85rem; color: #666; margin-top: 0.5rem;"></div>
+                    </div>
                 </div>
 
                 <h3>Retrieved Context</h3>
@@ -506,7 +536,7 @@
                 <!-- Extend Video Form -->
                 <div style="margin-bottom: 2rem; padding: 1rem; background: #f0f8ff; border-radius: 4px;">
                     <h4 style="margin-top: 0;">🎬 Extend Video</h4>
-                    <p style="font-size: 0.9rem; color: #666;">Continue the story by extending your video by 5 more seconds</p>
+                    <p style="font-size: 0.9rem; color: #666;">Continue the story by extending your video by 10 more seconds</p>
                     <form id="extend-video-form">
                         <label for="extend-prompt">Extension Prompt:</label>
                         <input type="text" id="extend-prompt" placeholder="e.g., camera pans to reveal a mountain" required>
@@ -1023,6 +1053,14 @@
                     const imageUrl = URL.createObjectURL(imageBlob);
                     imageContainer.innerHTML = `<img id="generated-image" src="${imageUrl}" alt="Generated image based on the AI-enhanced prompt">`;
                     visualizeStatus.textContent = 'Image generated successfully!';
+                    
+                    // Show image chat interface and store the image URL
+                    const imageChatSection = document.getElementById('image-chat-section');
+                    imageChatSection.style.display = 'block';
+                    imageChatSection.dataset.imageUrl = imageUrl;
+                    
+                    // Clear previous chat messages
+                    document.getElementById('chat-messages').innerHTML = '<p style="color: #666; font-size: 0.9rem; text-align: center; margin: 2rem 0;">Ask me anything about this image! 🎨</p>';
                 } else {
                     const error = await imageResponse.json();
                     throw new Error(error.detail || 'Image generation failed.');
@@ -1030,6 +1068,81 @@
             } catch (error) {
                 visualizeStatus.textContent = `Error: ${error.message}`;
                 imageContainer.innerHTML = `<p style="color:red;">${error.message}</p>`;
+            }
+        });
+        
+        // --- Handle Image Chat ---
+        const imageChatForm = document.getElementById('image-chat-form');
+        const chatMessages = document.getElementById('chat-messages');
+        const chatMessageInput = document.getElementById('chat-message-input');
+        const chatStatus = document.getElementById('chat-status');
+        const visionModelSelect = document.getElementById('vision-model-select');
+        
+        imageChatForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            
+            const message = chatMessageInput.value.trim();
+            if (!message) return;
+            
+            const imageChatSection = document.getElementById('image-chat-section');
+            const imageUrl = imageChatSection.dataset.imageUrl;
+            
+            if (!imageUrl) {
+                chatStatus.textContent = 'No image available for chat.';
+                chatStatus.style.color = 'red';
+                return;
+            }
+            
+            // Add user message to chat
+            const userMsg = document.createElement('div');
+            userMsg.style.cssText = 'background: #667eea; color: white; padding: 0.8rem; border-radius: 8px; margin-bottom: 0.8rem; max-width: 80%; margin-left: auto; text-align: right;';
+            userMsg.innerHTML = `<strong>You:</strong> ${message}`;
+            chatMessages.appendChild(userMsg);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+            
+            // Clear input and show loading
+            chatMessageInput.value = '';
+            chatStatus.textContent = '🤔 AI is analyzing the image...';
+            chatStatus.style.color = '#667eea';
+            
+            try {
+                const response = await fetch('/api/chat-with-image', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        image_url: imageUrl,
+                        message: message,
+                        model: visionModelSelect.value
+                    })
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Chat request failed');
+                }
+                
+                const result = await response.json();
+                
+                // Add AI response to chat
+                const aiMsg = document.createElement('div');
+                aiMsg.style.cssText = 'background: white; border: 1px solid #e0e0e0; padding: 0.8rem; border-radius: 8px; margin-bottom: 0.8rem; max-width: 80%;';
+                aiMsg.innerHTML = `<strong style="color: #667eea;">🤖 AI:</strong><br>${result.response.replace(/\n/g, '<br>')}`;
+                chatMessages.appendChild(aiMsg);
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+                
+                chatStatus.textContent = '';
+            } catch (error) {
+                chatStatus.textContent = `Error: ${error.message}`;
+                chatStatus.style.color = 'red';
+                
+                // Add error message to chat
+                const errorMsg = document.createElement('div');
+                errorMsg.style.cssText = 'background: #fee; border: 1px solid #fcc; padding: 0.8rem; border-radius: 8px; margin-bottom: 0.8rem; color: #c00;';
+                errorMsg.innerHTML = `<strong>Error:</strong> ${error.message}`;
+                chatMessages.appendChild(errorMsg);
+                chatMessages.scrollTop = chatMessages.scrollHeight;
             }
         });
 

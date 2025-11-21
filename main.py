@@ -14,6 +14,8 @@ from fastapi.responses import StreamingResponse, FileResponse
 from dotenv import load_dotenv
 from elevenlabs import Voice
 from elevenlabs.client import ElevenLabs
+import base64
+from pydantic import BaseModel
 
 # --- 1. Application Setup ---
 
@@ -667,7 +669,7 @@ async def get_pixverse_credits():
 async def extend_pixverse_video(
     source_video_id: int = Form(...),
     prompt: str = Form(...),
-    duration: int = Form(5),
+    duration: int = Form(10),
     quality: str = Form("540p"),
     motion_mode: str = Form("normal"),
     seed: int = Form(0)
@@ -879,6 +881,64 @@ async def get_tts_speakers(page_num: int = 1, page_size: int = 50):
     except Exception as e:
         logger.error(f"An error occurred while fetching TTS speakers: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch TTS speakers: {e}")
+
+
+# --- Image Chat with Vision Model ---
+class ImageChatRequest(BaseModel):
+    image_url: str
+    message: str
+    model: str = "llava:latest"  # Default to llava
+
+@app.post("/api/chat-with-image")
+async def chat_with_image(request: ImageChatRequest):
+    """
+    Chat with an AI about an image using Ollama vision models (llava/bakllava).
+    Accepts image URL and user message, returns AI response.
+    """
+    try:
+        # Fetch the image and convert to base64
+        img_response = requests.get(request.image_url, timeout=10)
+        if img_response.status_code != 200:
+            raise HTTPException(status_code=400, detail="Failed to fetch image")
+        
+        # Convert image to base64
+        image_base64 = base64.b64encode(img_response.content).decode('utf-8')
+        
+        # Prepare Ollama vision request
+        ollama_url = "http://127.0.0.1:11434/api/generate"
+        payload = {
+            "model": request.model,
+            "prompt": request.message,
+            "images": [image_base64],
+            "stream": False
+        }
+        
+        logger.info(f"Sending image chat request to Ollama with model: {request.model}")
+        
+        # Send to Ollama
+        ollama_response = requests.post(ollama_url, json=payload, timeout=60)
+        
+        if ollama_response.status_code != 200:
+            raise HTTPException(status_code=500, detail=f"Ollama error: {ollama_response.text}")
+        
+        result = ollama_response.json()
+        ai_response = result.get("response", "")
+        
+        logger.info(f"Image chat response received: {ai_response[:100]}...")
+        
+        return {
+            "response": ai_response,
+            "model": request.model
+        }
+        
+    except requests.exceptions.Timeout:
+        raise HTTPException(status_code=504, detail="Request timed out. Vision model may be loading.")
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Error connecting to Ollama: {e}")
+        raise HTTPException(status_code=503, detail="Could not connect to Ollama. Make sure it's running.")
+    except Exception as e:
+        logger.error(f"Error in image chat: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # --- 5. Application Entry Point ---
