@@ -195,21 +195,22 @@ async def get_ollama_models():
         raise HTTPException(status_code=500, detail="Failed to fetch models from Ollama.")
 
 
-@app.get("/api/comfy/models")
-async def get_comfy_models():
+@app.get("/api/comfyui/models")
+def get_comfyui_models():
     """
-    Fetches a curated list of checkpoint models from a local file.
+    Fetches the list of available checkpoint models from ComfyUI server.
     """
     try:
-        with open("comfy_models.txt", "r") as f:
-            models = [line.strip() for line in f if line.strip()]
+        response = requests.get(f"{COMFYUI_URL}/models/checkpoints")
+        response.raise_for_status()
+        models = response.json()
         return {"models": models}
-    except FileNotFoundError:
-        logger.error("comfy_models.txt not found. Please create it.")
-        raise HTTPException(status_code=404, detail="comfy_models.txt not found.")
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Could not fetch models from ComfyUI: {e}")
+        raise HTTPException(status_code=503, detail="Could not fetch models from ComfyUI server.")
     except Exception as e:
-        logger.error(f"Could not read comfy_models.txt: {e}")
-        raise HTTPException(status_code=500, detail="Could not read comfy_models.txt.")
+        logger.error(f"Error fetching ComfyUI models: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch models: {e}")
 
 
 @app.post("/api/generate-image")
@@ -428,6 +429,243 @@ async def generate_image_prompt(
         logger.error(f"An error occurred during image prompt generation: {e}")
         raise HTTPException(status_code=500, detail="Failed to generate image prompt.")
 
+
+# --- 4. PixVerse Video Generation ---
+PIXVERSE_API_KEY = os.getenv("PIXVERSE_API_KEY")
+PIXVERSE_API_URL = "https://app-api.pixverse.ai/openapi/v2"
+
+@app.post("/api/pixverse/generate-video")
+async def generate_pixverse_video(prompt: str = Form(...)):
+    """
+    Starts a text-to-video generation task with PixVerse.
+    """
+    if not PIXVERSE_API_KEY:
+        raise HTTPException(status_code=501, detail="PixVerse API key is not configured.")
+
+    trace_id = str(uuid.uuid4())
+    headers = {
+        "API-KEY": PIXVERSE_API_KEY,
+        "Content-Type": "application/json",
+        "Ai-trace-id": trace_id
+    }
+    payload = {
+        "aspect_ratio": "16:9",
+        "duration": 5,
+        "model": "v5",
+        "negative_prompt": "blurry, low quality, distorted",
+        "prompt": prompt,
+        "quality": "540p",
+        "seed": 0
+    }
+
+    try:
+        logger.info(f"Sending PixVerse text-to-video request with trace_id: {trace_id}")
+        logger.info(f"Payload: {json.dumps(payload, indent=2)}")
+        
+        response = requests.post(f"{PIXVERSE_API_URL}/video/text/generate", headers=headers, json=payload)
+        
+        # Log the full response for debugging
+        logger.info(f"PixVerse Response Status: {response.status_code}")
+        logger.info(f"PixVerse Response Body: {response.text}")
+        
+        response.raise_for_status()
+        data = response.json()
+        
+        if data.get("ErrCode") != 0:
+            error_msg = data.get('ErrMsg', 'Unknown error')
+            logger.error(f"PixVerse API Error: {error_msg}")
+            raise HTTPException(status_code=500, detail=f"PixVerse API Error: {error_msg}")
+        
+        video_id = data.get("Resp", {}).get("video_id")
+        if not video_id:
+            raise HTTPException(status_code=500, detail="PixVerse API did not return a video_id.")
+
+        logger.info(f"Successfully created video generation task with video_id: {video_id}")
+        return {"video_id": video_id}
+
+    except requests.exceptions.HTTPError as e:
+        logger.error(f"HTTP Error from PixVerse API: {e}")
+        logger.error(f"Response content: {e.response.text if hasattr(e, 'response') else 'No response'}")
+        raise HTTPException(status_code=503, detail=f"PixVerse API error: {str(e)}")
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Could not connect to PixVerse API: {e}")
+        raise HTTPException(status_code=503, detail="Could not connect to PixVerse API.")
+    except Exception as e:
+        logger.error(f"An error occurred during PixVerse video generation initiation: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to start video generation: {e}")
+
+@app.post("/api/pixverse/generate-video-from-image")
+async def generate_pixverse_video_from_image(
+    prompt: str = Form(...),
+    image: UploadFile = File(...),
+    duration: int = Form(5),
+    quality: str = Form("540p"),
+    motion_mode: str = Form("normal"),
+    camera_movement: str = Form(None),
+    seed: int = Form(0)
+):
+    """
+    Starts an image-to-video generation task with PixVerse.
+    """
+    if not PIXVERSE_API_KEY:
+        raise HTTPException(status_code=501, detail="PixVerse API key is not configured.")
+
+    trace_id = str(uuid.uuid4())
+    
+    try:
+        # Step 1: Upload image to PixVerse to get an img_id
+        upload_headers = {
+            "API-KEY": PIXVERSE_API_KEY,
+            "Ai-trace-id": trace_id
+        }
+        
+        image_content = await image.read()
+        filename = image.filename or "upload.jpg"
+        content_type = image.content_type or "image/jpeg"
+        
+        files = {'image': (filename, image_content, content_type)}
+        
+        logger.info(f"Uploading image to PixVerse with trace_id: {trace_id}")
+        upload_response = requests.post(f"{PIXVERSE_API_URL}/image/upload", headers=upload_headers, files=files)
+        
+        logger.info(f"Image Upload Response Status: {upload_response.status_code}")
+        logger.info(f"Image Upload Response Body: {upload_response.text}")
+        
+        upload_response.raise_for_status()
+        upload_data = upload_response.json()
+
+        if upload_data.get("ErrCode") != 0:
+            error_msg = upload_data.get('ErrMsg', 'Unknown error')
+            logger.error(f"PixVerse Image Upload Error: {error_msg}")
+            raise HTTPException(status_code=500, detail=f"PixVerse Image Upload Error: {error_msg}")
+
+        img_id = upload_data.get("Resp", {}).get("img_id")
+        if not img_id:
+            raise HTTPException(status_code=500, detail="PixVerse API did not return an img_id.")
+
+        logger.info(f"Successfully uploaded image, received img_id: {img_id}")
+
+        # Step 2: Use the img_id to generate the video
+        generation_headers = {
+            "API-KEY": PIXVERSE_API_KEY,
+            "Content-Type": "application/json",
+            "Ai-trace-id": trace_id
+        }
+        payload = {
+            "duration": duration,
+            "img_id": int(img_id),
+            "model": "v4.5",
+            "motion_mode": motion_mode,
+            "negative_prompt": "blurry, low quality, distorted",
+            "prompt": prompt,
+            "quality": quality,
+            "seed": seed
+        }
+        
+        # Add camera_movement only if specified
+        if camera_movement and camera_movement != "none":
+            payload["camera_movement"] = camera_movement
+
+        logger.info(f"Sending image-to-video request with payload: {json.dumps(payload, indent=2)}")
+        response = requests.post(f"{PIXVERSE_API_URL}/video/img/generate", headers=generation_headers, json=payload)
+        
+        logger.info(f"Video Generation Response Status: {response.status_code}")
+        logger.info(f"Video Generation Response Body: {response.text}")
+        
+        response.raise_for_status()
+        data = response.json()
+
+        if data.get("ErrCode") != 0:
+            error_msg = data.get('ErrMsg', 'Unknown error')
+            logger.error(f"PixVerse API Error: {error_msg}")
+            raise HTTPException(status_code=500, detail=f"PixVerse API Error: {error_msg}")
+        
+        video_id = data.get("Resp", {}).get("video_id")
+        if not video_id:
+            raise HTTPException(status_code=500, detail="PixVerse API did not return a video_id.")
+
+        logger.info(f"Successfully created image-to-video task with video_id: {video_id}")
+        return {"video_id": video_id}
+
+    except requests.exceptions.HTTPError as e:
+        logger.error(f"HTTP Error from PixVerse API: {e}")
+        logger.error(f"Response content: {e.response.text if hasattr(e, 'response') else 'No response'}")
+        raise HTTPException(status_code=503, detail=f"PixVerse API error: {str(e)}")
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Could not connect to PixVerse API: {e}")
+        raise HTTPException(status_code=503, detail="Could not connect to PixVerse API.")
+    except Exception as e:
+        logger.error(f"An error occurred during PixVerse image-to-video generation: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to start video generation: {e}")
+
+@app.get("/api/pixverse/video-status/{video_id}")
+async def get_pixverse_video_status(video_id: str):
+    """
+    Gets the status of a PixVerse video generation task.
+    """
+    if not PIXVERSE_API_KEY:
+        raise HTTPException(status_code=501, detail="PixVerse API key is not configured.")
+
+    headers = {
+        "API-KEY": PIXVERSE_API_KEY,
+        "Ai-trace-id": str(uuid.uuid4())
+    }
+    
+    try:
+        response = requests.get(f"{PIXVERSE_API_URL}/video/result/{video_id}", headers=headers)
+        response.raise_for_status()
+        data = response.json()
+        
+        logger.info(f"Status check for video_id {video_id}: {data}")
+
+        if data.get("ErrCode") != 0:
+            raise HTTPException(status_code=500, detail=f"PixVerse API Error: {data.get('ErrMsg')}")
+
+        return data.get("Resp", {})
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Could not connect to PixVerse API for status check: {e}")
+        raise HTTPException(status_code=503, detail="Could not connect to PixVerse API for status check.")
+    except Exception as e:
+        logger.error(f"An error occurred while checking PixVerse video status: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to check video status: {e}")
+
+@app.get("/api/pixverse/credits")
+async def get_pixverse_credits():
+    """
+    Gets the user's PixVerse credit balance.
+    """
+    if not PIXVERSE_API_KEY:
+        raise HTTPException(status_code=501, detail="PixVerse API key is not configured.")
+
+    headers = {
+        "API-KEY": PIXVERSE_API_KEY,
+        "ai-trace-id": str(uuid.uuid4())
+    }
+    
+    try:
+        response = requests.get(f"{PIXVERSE_API_URL}/account/balance", headers=headers)
+        response.raise_for_status()
+        data = response.json()
+        
+        logger.info(f"Credit balance check: {data}")
+
+        if data.get("ErrCode") != 0:
+            raise HTTPException(status_code=500, detail=f"PixVerse API Error: {data.get('ErrMsg')}")
+
+        return data.get("Resp", {})
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Could not connect to PixVerse API for credit check: {e}")
+        raise HTTPException(status_code=503, detail="Could not connect to PixVerse API for credit check.")
+    except Exception as e:
+        logger.error(f"An error occurred while checking PixVerse credits: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to check credits: {e}")
+
+# --- 5. Application Entry Point ---
+@app.get("/")
+async def read_main():
+    return {"message": "Welcome to the FastAPI application!"}
 
 # To run this application:
 # 1. Make sure you have fastapi, uvicorn, python-multipart, chromadb, and sentence-transformers installed.

@@ -6,7 +6,7 @@ source venv/bin/activate
 
 # Start the Uvicorn server in the background
 echo "Starting FastAPI server..."
-uvicorn main:app --host 0.0.0.0 --port 8000 &
+uvicorn main:app --host 0.0.0.0 --port 8001 &
 
 # Get the process ID (PID) of the background process
 PID=$!
@@ -15,4 +15,4 @@ PID=$!
 echo $PID > server.pid
 
 echo "Server started with PID $PID."
-echo "Access the application at http://127.0.0.1:8000"
+echo "Access the application at http://127.0.0.1:8001"

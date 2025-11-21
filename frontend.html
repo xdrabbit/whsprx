@@ -63,13 +63,13 @@
         button:hover {
             background-color: #005ecb;
         }
-        #status, #rag-status {
+        #status, #rag-status, #pixverse-status {
             margin-top: 1rem;
             text-align: center;
             font-style: italic;
             color: #666;
         }
-        #results-container, #rag-container {
+        #results-container, #rag-container, #generated-video-container {
             margin-top: 1.5rem;
         }
         .result-item, .context-item {
@@ -174,6 +174,105 @@
                 <div id="rag-context"></div>
             </div>
         </div>
+
+        <!-- PixVerse Video Generation -->
+        <div class="section">
+            <h2>PixVerse Video Generation</h2>
+            
+            <!-- Credit Balance Display -->
+            <div id="pixverse-credits" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem; color: white;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                    <span style="font-weight: 600; font-size: 0.9rem;">⚡ PixVerse Credits</span>
+                    <button onclick="fetchPixverseCredits()" style="background: rgba(255,255,255,0.2); border: none; color: white; padding: 0.3rem 0.8rem; border-radius: 4px; cursor: pointer; font-size: 0.85rem;">↻ Refresh</button>
+                </div>
+                <div style="display: flex; gap: 1.5rem; flex-wrap: wrap;">
+                    <div>
+                        <div style="font-size: 0.75rem; opacity: 0.9; margin-bottom: 0.2rem;">Monthly Credits</div>
+                        <div id="credit-monthly" style="font-size: 1.5rem; font-weight: bold;">--</div>
+                    </div>
+                    <div>
+                        <div style="font-size: 0.75rem; opacity: 0.9; margin-bottom: 0.2rem;">Package Credits</div>
+                        <div id="credit-package" style="font-size: 1.5rem; font-weight: bold;">--</div>
+                    </div>
+                </div>
+                <div style="margin-top: 0.8rem; background: rgba(255,255,255,0.2); height: 8px; border-radius: 4px; overflow: hidden;">
+                    <div id="credit-bar" style="height: 100%; background: #4ade80; width: 0%; transition: width 0.5s ease;"></div>
+                </div>
+                <div id="credit-status" style="font-size: 0.75rem; margin-top: 0.5rem; opacity: 0.9;">Loading credits...</div>
+            </div>
+            
+            <form id="pixverse-form">
+                <label for="pixverse-prompt-input">Video Prompt:</label>
+                <input type="text" id="pixverse-prompt-input" placeholder="e.g., a cat playing a piano">
+                <button type="submit">Generate Video</button>
+            </form>
+            
+            <!-- Image to Video Form -->
+            <form id="pixverse-image-form" style="margin-top: 2rem; padding-top: 2rem; border-top: 1px solid #eee;">
+                <h3 style="margin-top: 0;">Image to Video</h3>
+                <label for="pixverse-image-input">Upload Image:</label>
+                <input type="file" id="pixverse-image-input" accept="image/*" style="margin-bottom: 1rem;">
+                
+                <label for="pixverse-image-prompt-input">Motion Prompt:</label>
+                <input type="text" id="pixverse-image-prompt-input" placeholder="e.g., camera slowly zooms in">
+                
+                <!-- Advanced Options Collapsible -->
+                <div style="margin: 1.5rem 0;">
+                    <button type="button" id="toggle-advanced" style="background: #f0f0f0; color: #333; border: 1px solid #ccc; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; width: 100%; text-align: left; display: flex; justify-content: space-between; align-items: center;">
+                        <span>⚙️ Advanced Options</span>
+                        <span id="toggle-icon">▼</span>
+                    </button>
+                    <div id="advanced-options" style="display: none; margin-top: 1rem; padding: 1rem; background: #f9f9f9; border-radius: 4px;">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                            <div>
+                                <label for="duration-select">Duration:</label>
+                                <select id="duration-select">
+                                    <option value="5">5 seconds</option>
+                                    <option value="10">10 seconds</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label for="quality-select">Quality:</label>
+                                <select id="quality-select">
+                                    <option value="540p" selected>540p (Faster)</option>
+                                    <option value="720p">720p</option>
+                                    <option value="1080p">1080p (Best)</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label for="motion-mode-select">Motion Mode:</label>
+                                <select id="motion-mode-select">
+                                    <option value="normal" selected>Normal</option>
+                                    <option value="fast">Fast</option>
+                                    <option value="slow">Slow</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label for="camera-movement-select">Camera Movement:</label>
+                                <select id="camera-movement-select">
+                                    <option value="none" selected>None</option>
+                                    <option value="zoom_in">Zoom In</option>
+                                    <option value="zoom_out">Zoom Out</option>
+                                    <option value="pan_left">Pan Left</option>
+                                    <option value="pan_right">Pan Right</option>
+                                    <option value="tilt_up">Tilt Up</option>
+                                    <option value="tilt_down">Tilt Down</option>
+                                </select>
+                            </div>
+                            <div style="grid-column: span 2;">
+                                <label for="seed-input">Seed (0 for random):</label>
+                                <input type="number" id="seed-input" value="0" min="0">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <button type="submit">Generate Video from Image</button>
+            </form>
+            
+            <div id="pixverse-status"></div>
+            <div id="generated-video-container"></div>
+        </div>
     </div>
 
     <script>
@@ -181,6 +280,7 @@
         document.addEventListener('DOMContentLoaded', async () => {
             const modelSelect = document.getElementById('model-select');
             const ragStatus = document.getElementById('rag-status');
+            const comfyModelsList = document.getElementById('comfy-models-list');
             try {
                 ragStatus.textContent = 'Fetching available LLMs...';
                 const response = await fetch('/api/ollama/models');
@@ -208,7 +308,82 @@
                 ragStatus.textContent = `Error: ${error.message}. Is Ollama running?`;
                 modelSelect.innerHTML = '<option>Failed to load models</option>';
             }
+
+            // --- Populate ComfyUI Models ---
+            try {
+                const comfyResponse = await fetch('/api/comfyui/models');
+                if (!comfyResponse.ok) {
+                    throw new Error(`Failed to fetch ComfyUI models: ${comfyResponse.statusText}`);
+                }
+                const comfyData = await comfyResponse.json();
+                const comfyModels = comfyData.models;
+
+                if (comfyModels && comfyModels.length > 0) {
+                    comfyModelsList.innerHTML = ''; // Clear any previous options
+                    comfyModels.forEach(modelName => {
+                        const option = document.createElement('option');
+                        option.value = modelName;
+                        option.textContent = modelName;
+                        comfyModelsList.appendChild(option);
+                    });
+                } else {
+                    // Add a default option or leave empty
+                    const option = document.createElement('option');
+                    option.value = '';
+                    option.textContent = 'No models available';
+                    comfyModelsList.appendChild(option);
+                }
+            } catch (error) {
+                console.error('Error fetching ComfyUI models:', error);
+                const option = document.createElement('option');
+                option.value = '';
+                option.textContent = 'Failed to load models';
+                comfyModelsList.appendChild(option);
+            }
+            
+            // --- Fetch PixVerse Credits ---
+            fetchPixverseCredits();
         });
+        
+        // Function to fetch and display PixVerse credits
+        async function fetchPixverseCredits() {
+            try {
+                const response = await fetch('/api/pixverse/credits');
+                const data = await response.json();
+                
+                if (response.ok) {
+                    const monthly = data.credit_monthly || 0;
+                    const package = data.credit_package || 0;
+                    const total = monthly + package;
+                    
+                    document.getElementById('credit-monthly').textContent = monthly.toLocaleString();
+                    document.getElementById('credit-package').textContent = package.toLocaleString();
+                    
+                    // Update progress bar (assume 1M is full tank)
+                    const percentage = Math.min((total / 1000000) * 100, 100);
+                    document.getElementById('credit-bar').style.width = percentage + '%';
+                    
+                    // Update status message
+                    let statusMsg = '';
+                    if (total > 500000) {
+                        statusMsg = '🟢 Tank is full! Generate away!';
+                        document.getElementById('credit-bar').style.background = '#4ade80';
+                    } else if (total > 100000) {
+                        statusMsg = '🟡 Credits looking good';
+                        document.getElementById('credit-bar').style.background = '#fbbf24';
+                    } else {
+                        statusMsg = '🔴 Running low - time to fill up!';
+                        document.getElementById('credit-bar').style.background = '#ef4444';
+                    }
+                    document.getElementById('credit-status').textContent = statusMsg;
+                } else {
+                    document.getElementById('credit-status').textContent = 'Failed to load credits';
+                }
+            } catch (error) {
+                console.error('Error fetching credits:', error);
+                document.getElementById('credit-status').textContent = 'Error loading credits';
+            }
+        }
 
         // --- Handle File Upload ---
         const uploadForm = document.getElementById('upload-form');
@@ -256,7 +431,7 @@
         const listenButton = document.getElementById('listen-button');
         const audioPlayer = document.getElementById('audio-player');
         const voiceSelect = document.getElementById('voice-select');
-
+        const generatedImageContainer = document.getElementById('generated-image-container');
 
         ragForm.addEventListener('submit', async (event) => {
             event.preventDefault();
@@ -486,6 +661,176 @@
                 imageContainer.innerHTML = `<p style="color:red;">${error.message}</p>`;
             }
         });
+
+        // --- Handle PixVerse Video Generation ---
+        const pixverseForm = document.getElementById('pixverse-form');
+        const pixverseStatus = document.getElementById('pixverse-status');
+        const generatedVideoContainer = document.getElementById('generated-video-container');
+
+        pixverseForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const prompt = document.getElementById('pixverse-prompt-input').value;
+            if (!prompt) {
+                pixverseStatus.textContent = 'Please enter a video prompt.';
+                pixverseStatus.style.color = 'red';
+                return;
+            }
+
+            pixverseStatus.textContent = 'Sending video generation request...';
+            pixverseStatus.style.color = '#333';
+            generatedVideoContainer.innerHTML = '';
+
+            try {
+                const formData = new FormData();
+                formData.append('prompt', prompt);
+
+                const response = await fetch('/api/pixverse/generate-video', {
+                    method: 'POST',
+                    body: formData,
+                });
+
+                const result = await response.json();
+                if (!response.ok) {
+                    throw new Error(result.detail || 'Failed to start video generation.');
+                }
+
+                const videoId = result.video_id;
+                pixverseStatus.textContent = `Video generation started with ID: ${videoId}. Polling for status...`;
+                
+                // Start polling for video status
+                pollVideoStatus(videoId);
+
+            } catch (error) {
+                pixverseStatus.textContent = `Error: ${error.message}`;
+                pixverseStatus.style.color = 'red';
+            }
+        });
+        
+        // --- Handle Image-to-Video Generation ---
+        const pixverseImageForm = document.getElementById('pixverse-image-form');
+        
+        // Toggle advanced options
+        document.getElementById('toggle-advanced').addEventListener('click', () => {
+            const advancedOptions = document.getElementById('advanced-options');
+            const toggleIcon = document.getElementById('toggle-icon');
+            if (advancedOptions.style.display === 'none') {
+                advancedOptions.style.display = 'block';
+                toggleIcon.textContent = '▲';
+            } else {
+                advancedOptions.style.display = 'none';
+                toggleIcon.textContent = '▼';
+            }
+        });
+        
+        pixverseImageForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const imageInput = document.getElementById('pixverse-image-input');
+            const prompt = document.getElementById('pixverse-image-prompt-input').value;
+            
+            if (!imageInput.files || imageInput.files.length === 0) {
+                pixverseStatus.textContent = 'Please select an image first.';
+                pixverseStatus.style.color = 'red';
+                return;
+            }
+            
+            if (!prompt) {
+                pixverseStatus.textContent = 'Please enter a motion prompt.';
+                pixverseStatus.style.color = 'red';
+                return;
+            }
+
+            pixverseStatus.textContent = 'Uploading image and starting generation...';
+            pixverseStatus.style.color = '#333';
+            generatedVideoContainer.innerHTML = '';
+
+            try {
+                const formData = new FormData();
+                formData.append('image', imageInput.files[0]);
+                formData.append('prompt', prompt);
+                formData.append('duration', document.getElementById('duration-select').value);
+                formData.append('quality', document.getElementById('quality-select').value);
+                formData.append('motion_mode', document.getElementById('motion-mode-select').value);
+                formData.append('camera_movement', document.getElementById('camera-movement-select').value);
+                formData.append('seed', document.getElementById('seed-input').value);
+
+                const response = await fetch('/api/pixverse/generate-video-from-image', {
+                    method: 'POST',
+                    body: formData,
+                });
+
+                const result = await response.json();
+                if (!response.ok) {
+                    throw new Error(result.detail || 'Failed to start video generation.');
+                }
+
+                const videoId = result.video_id;
+                pixverseStatus.textContent = `Image-to-video generation started with ID: ${videoId}. Polling for status...`;
+                
+                // Start polling for video status
+                pollVideoStatus(videoId);
+
+            } catch (error) {
+                pixverseStatus.textContent = `Error: ${error.message}`;
+                pixverseStatus.style.color = 'red';
+            }
+        });
+
+        async function pollVideoStatus(videoId) {
+            console.log(`Starting polling for video_id: ${videoId}`);
+            const interval = setInterval(async () => {
+                try {
+                    console.log(`Polling status for video_id: ${videoId}`);
+                    const response = await fetch(`/api/pixverse/video-status/${videoId}`);
+                    const result = await response.json();
+                    
+                    console.log('Status response:', result);
+
+                    if (!response.ok) {
+                        throw new Error(result.detail || 'Failed to get video status.');
+                    }
+
+                    // PixVerse status codes: 1=successful, 5=generating, 6=deleted, 7=moderation failed, 8=generation failed
+                    const statusText = result.status === 1 ? 'Completed' : 
+                                     result.status === 5 ? 'Generating' : 
+                                     result.status === 6 ? 'Deleted' : 
+                                     result.status === 7 ? 'Moderation Failed' : 
+                                     result.status === 8 ? 'Generation Failed' : `Unknown (${result.status})`;
+                    
+                    pixverseStatus.textContent = `Status: ${statusText} (Video ID: ${videoId})`;
+
+                    // Check if video is complete (status 1) and has a URL
+                    if (result.status === 1 && result.url) {
+                        clearInterval(interval);
+                        console.log('Video complete! URL:', result.url);
+                        pixverseStatus.textContent = 'Video generation complete!';
+                        pixverseStatus.style.color = 'green';
+                        
+                        const video = document.createElement('video');
+                        video.src = result.url;
+                        video.controls = true;
+                        video.style.maxWidth = '100%';
+                        video.style.marginTop = '1rem';
+                        generatedVideoContainer.innerHTML = '';
+                        generatedVideoContainer.appendChild(video);
+                        
+                        // Refresh credits after successful generation
+                        fetchPixverseCredits();
+                    } else if (result.status === 7 || result.status === 8) {
+                        clearInterval(interval);
+                        console.log('Video generation failed with status:', result.status);
+                        pixverseStatus.textContent = `Video generation failed: ${statusText}`;
+                        pixverseStatus.style.color = 'red';
+                    } else {
+                        console.log('Still processing, will poll again in 5 seconds');
+                    }
+                } catch (error) {
+                    clearInterval(interval);
+                    console.error('Error during polling:', error);
+                    pixverseStatus.textContent = `Error polling for status: ${error.message}`;
+                    pixverseStatus.style.color = 'red';
+                }
+            }, 5000); // Poll every 5 seconds
+        }
     </script>
 </body>
 </html>

@@ -1,0 +1,18 @@
+#pixverse text to video example
+
+curl --location --request POST 'https://app-api.pixverse.ai/openapi/v2/video/text/generate' \
+--header 'API-KEY: your-api-key' \
+--header 'Ai-trace-id: {{$string.uuid}}' \
+--header 'Content-Type: application/json' \
+--data-raw '{
+    "aspect_ratio": "16:9",
+    "duration": 5,
+    "model": "v5",
+    //"motion_mode": "normal",
+    "negative_prompt": "string",
+    //"camera_movement": "zoom_in", //Use this field to apply camera movement if needed.
+    "prompt": "string",
+    "quality": "540p",
+    "seed": 0,
+    //"template_id": 302325299692608
+}'
