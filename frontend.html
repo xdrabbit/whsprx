@@ -238,6 +238,75 @@
             background: rgba(255, 255, 255, 0.3);
             transform: rotate(90deg);
         }
+
+        /* Video gallery (warm, colorful, artist feel) */
+        #my-videos-section {
+            margin-top: 1.5rem;
+            padding-top: 1.5rem;
+            border-top: 1px dashed rgba(102, 126, 234, 0.15);
+        }
+
+        #my-videos-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+
+        .video-tile {
+            background: linear-gradient(135deg, rgba(255,240,235,0.95), rgba(255,246,236,0.9));
+            border-radius: 10px;
+            border: 1px solid rgba(0,0,0,0.06);
+            padding: 0.6rem;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.05);
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            cursor: pointer;
+            transition: transform 0.12s ease, box-shadow 0.12s ease;
+        }
+
+        .video-tile:hover { transform: translateY(-4px); box-shadow: 0 12px 30px rgba(0,0,0,0.08); }
+
+        .video-thumb {
+            width: 100%;
+            height: 100px;
+            object-fit: cover;
+            border-radius: 6px;
+            background: linear-gradient(180deg, rgba(230,230,240,0.6), rgba(245,240,235,0.8));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        .video-meta {
+            font-size: 0.85rem;
+            color: #5b3b2e;
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            gap: 0.5rem;
+        }
+
+        .video-title {
+            font-weight: 700;
+            color: #333;
+            font-size: 0.95rem;
+            line-height: 1.2;
+        }
+
+        .video-date {
+            font-size: 0.75rem;
+            color: #7a5a4a;
+            opacity: 0.9;
+        }
+
+        .video-actions-row { display:flex; gap:0.5rem; }
+
+        .small-btn { padding: 0.35rem 0.6rem; font-size: 0.8rem; border-radius: 6px; border: none; cursor:pointer; }
+        .small-btn--play { background: linear-gradient(90deg,#ff9a8b,#fecf9f); color:#2b1a13; }
+        .small-btn--extend { background: linear-gradient(90deg,#9ad9ff,#b7a6ff); color:#111; }
         
         .feature-section {
             background: rgba(255, 255, 255, 0.1);
@@ -528,6 +597,19 @@
             
             <div id="pixverse-status"></div>
             <div id="generated-video-container"></div>
+
+            <!-- My Videos Gallery -->
+            <div id="my-videos-section">
+                <h3 style="margin-top:1rem; margin-bottom:0.25rem;">My Videos</h3>
+                <div style="display:flex; justify-content: space-between; align-items:center; gap: 1rem;">
+                    <p style="color:#666; margin:0;">Previously generated videos (saved locally in your browser)</p>
+                    <div style="display:flex; gap:0.5rem; align-items:center;">
+                        <button id="refresh-videos-btn" class="small-btn" style="background:#ffffff; border:1px solid #eee;">↻ Refresh</button>
+                        <button id="clear-videos-btn" class="small-btn" style="background:#fff; border:1px solid #eee;">🗑 Clear</button>
+                    </div>
+                </div>
+                <div id="my-videos-grid"></div>
+            </div>
             
             <!-- Video Actions (Extend & Lip Sync) - Hidden until video is ready -->
             <div id="video-actions" style="display: none; margin-top: 2rem; padding-top: 2rem; border-top: 1px solid #eee;">
@@ -744,6 +826,9 @@
             
             // --- Fetch PixVerse Credits ---
             fetchPixverseCredits();
+
+            // Render saved video gallery from localStorage
+            renderVideoGallery();
         });
         
         // Function to fetch and display PixVerse credits
@@ -1181,6 +1266,10 @@
                 const videoId = result.video_id;
                 pixverseStatus.textContent = `Video generation started with ID: ${videoId}. Polling for status...`;
                 
+                // Save placeholder entry for gallery (generating)
+                addOrUpdateVideoEntry({ video_id: videoId, prompt: prompt, status: 'generating', created_at: new Date().toISOString() });
+                renderVideoGallery();
+
                 // Start polling for video status
                 pollVideoStatus(videoId);
 
@@ -1249,7 +1338,11 @@
 
                 const videoId = result.video_id;
                 pixverseStatus.textContent = `Image-to-video generation started with ID: ${videoId}. Polling for status...`;
-                
+
+                // Save placeholder entry for gallery (generating)
+                addOrUpdateVideoEntry({ video_id: videoId, prompt: prompt, status: 'generating', created_at: new Date().toISOString() });
+                renderVideoGallery();
+
                 // Start polling for video status
                 pollVideoStatus(videoId);
 
@@ -1301,6 +1394,10 @@
                         generatedVideoContainer.innerHTML = '';
                         generatedVideoContainer.appendChild(video);
                         
+                        // Persist completed video entry in the gallery
+                        addOrUpdateVideoEntry({ video_id: videoId, prompt: result.prompt || '', status: 'completed', url: result.url, create_time: result.create_time || new Date().toISOString(), modify_time: result.modify_time || new Date().toISOString() });
+                        renderVideoGallery();
+
                         // Show video action buttons
                         document.getElementById('video-actions').style.display = 'block';
                         
@@ -1322,6 +1419,173 @@
                 }
             }, 5000); // Poll every 5 seconds
         }
+
+        // --- LocalStorage video gallery helpers ---
+        function loadSavedVideos() {
+            try {
+                const raw = localStorage.getItem('pixverseVideos');
+                return raw ? JSON.parse(raw) : [];
+            } catch (e) {
+                console.error('Failed to load saved videos from localStorage', e);
+                return [];
+            }
+        }
+
+        function saveVideos(list) {
+            try {
+                localStorage.setItem('pixverseVideos', JSON.stringify(list));
+            } catch (e) {
+                console.error('Failed to save videos to localStorage', e);
+            }
+        }
+
+        function addOrUpdateVideoEntry(entry) {
+            const list = loadSavedVideos();
+            const idx = list.findIndex(v => String(v.video_id) === String(entry.video_id));
+            if (idx >= 0) {
+                list[idx] = { ...list[idx], ...entry };
+            } else {
+                // Keep newest first
+                list.unshift(entry);
+            }
+            saveVideos(list);
+        }
+
+        function formatDateNice(d) {
+            try {
+                const dt = new Date(d || Date.now());
+                if (isNaN(dt)) return 'Unknown';
+                return dt.toLocaleString();
+            } catch (e) {
+                return 'Unknown';
+            }
+        }
+
+        function renderVideoGallery() {
+            const grid = document.getElementById('my-videos-grid');
+            if (!grid) return;
+            const list = loadSavedVideos();
+            grid.innerHTML = '';
+
+            if (!list || list.length === 0) {
+                grid.innerHTML = '<div style="padding:1rem;color:#777">No videos yet — generate one and it will appear here.</div>';
+                return;
+            }
+
+            list.forEach(item => {
+                const tile = document.createElement('div');
+                tile.className = 'video-tile';
+                tile.dataset.videoId = item.video_id;
+
+                // Thumbnail area (video element used as preview if url exists)
+                const thumb = document.createElement('div');
+                thumb.className = 'video-thumb';
+                if (item.url) {
+                    const v = document.createElement('video');
+                    v.src = item.url;
+                    v.muted = true;
+                    v.playsInline = true;
+                    v.loop = true;
+                    v.autoplay = true;
+                    v.style.width = '100%';
+                    v.style.height = '100%';
+                    v.style.objectFit = 'cover';
+                    thumb.appendChild(v);
+                } else {
+                    const placeholder = document.createElement('div');
+                    placeholder.style.width = '100%';
+                    placeholder.style.height = '100%';
+                    placeholder.style.display = 'flex';
+                    placeholder.style.alignItems = 'center';
+                    placeholder.style.justifyContent = 'center';
+                    placeholder.style.color = '#a76a5c';
+                    placeholder.textContent = 'Generating…';
+                    thumb.appendChild(placeholder);
+                }
+
+                const meta = document.createElement('div');
+                meta.className = 'video-meta';
+
+                const title = document.createElement('div');
+                title.className = 'video-title';
+                title.textContent = item.prompt ? item.prompt.slice(0, 40) : `Video ${item.video_id}`;
+
+                const date = document.createElement('div');
+                date.className = 'video-date';
+                date.textContent = formatDateNice(item.create_time || item.modify_time || Date.now());
+
+                meta.appendChild(title);
+                meta.appendChild(date);
+
+                const actions = document.createElement('div');
+                actions.className = 'video-actions-row';
+
+                const playBtn = document.createElement('button');
+                playBtn.className = 'small-btn small-btn--play';
+                playBtn.textContent = '▶ Play';
+                playBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    playVideo(item);
+                });
+
+                const extendBtn = document.createElement('button');
+                extendBtn.className = 'small-btn small-btn--extend';
+                extendBtn.textContent = '➕ Extend';
+                extendBtn.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    // Fill extend prompt and set currentVideoId then show form
+                    currentVideoId = item.video_id;
+                    document.getElementById('extend-prompt').value = `Continue from ${item.prompt || 'previous scene'}`;
+                    document.getElementById('video-actions').style.display = 'block';
+                    window.scrollTo({ top: document.getElementById('video-actions').offsetTop - 30, behavior: 'smooth' });
+                });
+
+                actions.appendChild(playBtn);
+                actions.appendChild(extendBtn);
+
+                tile.appendChild(thumb);
+                tile.appendChild(meta);
+                tile.appendChild(actions);
+
+                // Clicking the tile also plays the video
+                tile.addEventListener('click', () => playVideo(item));
+
+                grid.appendChild(tile);
+            });
+        }
+
+        function playVideo(item) {
+            if (!item || !item.url) {
+                pixverseStatus.textContent = 'This video is not yet ready — it is still generating.';
+                pixverseStatus.style.color = '#666';
+                return;
+            }
+            currentVideoId = item.video_id;
+            generatedVideoContainer.innerHTML = '';
+            const video = document.createElement('video');
+            video.src = item.url;
+            video.controls = true;
+            video.style.maxWidth = '100%';
+            video.style.marginTop = '1rem';
+            generatedVideoContainer.appendChild(video);
+            document.getElementById('video-actions').style.display = 'block';
+            pixverseStatus.textContent = `Loaded video ${item.video_id}`;
+            pixverseStatus.style.color = 'green';
+        }
+
+        // Clear saved videos
+        document.addEventListener('click', (e) => {
+            if (e.target && e.target.id === 'clear-videos-btn') {
+                if (confirm('Clear saved video entries from this browser?')) {
+                    localStorage.removeItem('pixverseVideos');
+                    renderVideoGallery();
+                }
+            }
+
+            if (e.target && e.target.id === 'refresh-videos-btn') {
+                renderVideoGallery();
+            }
+        });
         
         // --- Fetch TTS Speakers ---
         async function fetchTTSSpeakers() {
@@ -1387,7 +1651,7 @@
                 const formData = new FormData();
                 formData.append('source_video_id', currentVideoId);
                 formData.append('prompt', prompt);
-                formData.append('duration', '5');
+                formData.append('duration', '10');
                 formData.append('quality', '540p');
                 formData.append('motion_mode', 'normal');
                 formData.append('seed', '0');
@@ -1409,6 +1673,9 @@
                 document.getElementById('extend-prompt').value = '';
                 
                 // Start polling for the extended video
+                // Save a placeholder entry for the new extended video
+                addOrUpdateVideoEntry({ video_id: newVideoId, prompt: prompt, status: 'generating', created_at: new Date().toISOString() });
+                renderVideoGallery();
                 pollVideoStatus(newVideoId);
                 
             } catch (error) {
