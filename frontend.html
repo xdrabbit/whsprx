@@ -1023,6 +1023,16 @@
                     option.value = voice.voice_id;
                     option.textContent = voice.name;
                     voiceSelect.appendChild(option);
+
+                    // Also make these voices available for PixVerse lip-sync selection.
+                    // Prefix values so we can distinguish ElevenLabs voices client-side.
+                    const ttsSelect = document.getElementById('tts-speaker');
+                    if (ttsSelect) {
+                        const ttsOption = document.createElement('option');
+                        ttsOption.value = `elevenlabs:${voice.voice_id}`;
+                        ttsOption.textContent = `ElevenLabs — ${voice.name}`;
+                        ttsSelect.appendChild(ttsOption);
+                    }
                 });
             } catch (error) {
                 console.error('Error fetching ElevenLabs voices:', error);
@@ -1739,16 +1749,63 @@
             
             if (mode === 'tts') {
                 const text = document.getElementById('tts-text').value;
-                const speaker = document.getElementById('tts-speaker').value;
-                
+                let speaker = document.getElementById('tts-speaker').value;
+
                 if (!text) {
                     pixverseStatus.textContent = 'Please enter speech text.';
                     pixverseStatus.style.color = 'red';
                     return;
                 }
-                
-                formData.append('lip_sync_tts_content', text);
-                formData.append('lip_sync_tts_speaker_id', speaker);
+
+                // If user selected an ElevenLabs voice (value prefixed with `elevenlabs:`),
+                // generate audio via /api/text-to-speech and upload to PixVerse, then use audio_media_id in the lip-sync request.
+                if (speaker && speaker.startsWith('elevenlabs:')) {
+                    const elevenVoice = speaker.split(':', 2)[1];
+                    try {
+                        pixverseStatus.textContent = 'Generating audio with ElevenLabs...';
+                        pixverseStatus.style.color = '#333';
+
+                        const ttsForm = new FormData();
+                        ttsForm.append('text', text);
+                        ttsForm.append('voice_id', elevenVoice);
+
+                        const ttsResp = await fetch('/api/text-to-speech', { method: 'POST', body: ttsForm });
+                        if (!ttsResp.ok) {
+                            const err = await ttsResp.json();
+                            throw new Error(err.detail || 'Failed to generate TTS via ElevenLabs');
+                        }
+
+                        const audioBlob = await ttsResp.blob();
+
+                        // Upload the audio to PixVerse media endpoint
+                        pixverseStatus.textContent = 'Uploading audio to PixVerse...';
+                        const uploadForm = new FormData();
+                        // Name the file so PixVerse can infer format
+                        uploadForm.append('file', new File([audioBlob], 'elevenlabs_tts.mp3', { type: audioBlob.type || 'audio/mpeg' }));
+
+                        const uploadResp = await fetch('/api/pixverse/upload-media', { method: 'POST', body: uploadForm });
+                        const uploadResult = await uploadResp.json();
+                        if (!uploadResp.ok) {
+                            throw new Error(uploadResult.detail || 'Failed to upload audio to PixVerse');
+                        }
+
+                        uploadedAudioMediaId = uploadResult.media_id;
+                        document.getElementById('audio-upload-status').textContent = `✓ Audio uploaded (ID: ${uploadedAudioMediaId})`;
+                        document.getElementById('audio-upload-status').style.color = 'green';
+
+                        // We'll send the audio_media_id rather than the TTS speaker id
+                        formData.append('audio_media_id', uploadedAudioMediaId);
+
+                    } catch (err) {
+                        pixverseStatus.textContent = `Audio/TTS error: ${err.message}`;
+                        pixverseStatus.style.color = 'red';
+                        return;
+                    }
+                } else {
+                    // Normal PixVerse speaker
+                    formData.append('lip_sync_tts_content', text);
+                    formData.append('lip_sync_tts_speaker_id', speaker);
+                }
                 
             } else {
                 // Audio mode - need to upload audio first
