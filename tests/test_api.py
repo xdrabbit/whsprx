@@ -3,6 +3,7 @@ from fastapi.testclient import TestClient
 from main import app
 import os
 from unittest.mock import patch, MagicMock, AsyncMock
+import base64
 
 client = TestClient(app)
 
@@ -374,6 +375,8 @@ def test_pixverse_image_to_video_success():
         assert sent_json['prompt'] == "camera zooms in slowly"
         assert sent_json['duration'] == 5
         assert sent_json['quality'] == "540p"
+        # model should be included (default v4.5)
+        assert sent_json['model'] == 'v4.5'
 
 
 def test_pixverse_image_to_video_with_camera_movement():
@@ -422,6 +425,8 @@ def test_pixverse_image_to_video_with_camera_movement():
         assert sent_json['quality'] == "720p"
         assert sent_json['motion_mode'] == "slow"
         assert sent_json['seed'] == 12345
+        # include model default
+        assert sent_json['model'] == 'v4.5'
 
 
 def test_pixverse_image_to_video_upload_failure():
@@ -635,6 +640,61 @@ def test_pixverse_lip_sync_tts_success():
         assert sent_json['source_video_id'] == 123456
         assert sent_json['lip_sync_tts_content'] == "Hello world"
         assert sent_json['lip_sync_tts_speaker_id'] == "1"
+
+
+def test_chat_with_image_url_success():
+    """
+    Test chat-with-image when given an image URL; backend should fetch image and send base64 to Ollama.
+    """
+    # Mock the image fetch and Ollama call
+    fake_image_bytes = b'\x89PNG\r\n\x1a\n'  # pretend PNG
+    mock_ollama_resp = {"response": "This is an analysis from the vision model."}
+
+    with patch('requests.get') as mock_get:
+        with patch('requests.post') as mock_post:
+            # requests.get for the image
+            mock_get.return_value.status_code = 200
+            mock_get.return_value.content = fake_image_bytes
+            mock_get.return_value.raise_for_status = MagicMock()
+
+            # requests.post to Ollama
+            mock_post.return_value.status_code = 200
+            mock_post.return_value.json.return_value = mock_ollama_resp
+            mock_post.return_value.raise_for_status = MagicMock()
+
+            response = client.post('/api/chat-with-image', json={
+                'image_url': 'https://example.com/fake.png',
+                'message': 'Describe this image',
+                'model': 'llava:latest'
+            })
+
+            assert response.status_code == 200
+            data = response.json()
+            assert 'response' in data
+            assert data['response'] == mock_ollama_resp['response']
+
+
+def test_chat_with_image_base64_success():
+    """
+    Test chat-with-image when sending base64 image directly in payload.
+    """
+    fake_b64 = base64.b64encode(b'\x89PNG\r\n\x1a\n').decode('utf-8')
+    mock_ollama_resp = {"response": "Vision model answer"}
+
+    with patch('requests.post') as mock_post:
+        mock_post.return_value.status_code = 200
+        mock_post.return_value.json.return_value = mock_ollama_resp
+        mock_post.return_value.raise_for_status = MagicMock()
+
+        response = client.post('/api/chat-with-image', json={
+            'image_base64': fake_b64,
+            'message': 'What colors?',
+            'model': 'bakllava:latest'
+        })
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data['response'] == mock_ollama_resp['response']
 
 
 def test_pixverse_lip_sync_audio_success():

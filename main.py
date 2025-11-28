@@ -501,6 +501,7 @@ async def generate_pixverse_video_from_image(
     prompt: str = Form(...),
     image: UploadFile = File(...),
     duration: int = Form(5),
+    model: str = Form("v4.5"),
     quality: str = Form("540p"),
     motion_mode: str = Form("normal"),
     camera_movement: str = Form(None),
@@ -556,7 +557,7 @@ async def generate_pixverse_video_from_image(
         payload = {
             "duration": duration,
             "img_id": int(img_id),
-            "model": "v4.5",
+            "model": model,
             "motion_mode": motion_mode,
             "negative_prompt": "blurry, low quality, distorted",
             "prompt": prompt,
@@ -670,6 +671,7 @@ async def extend_pixverse_video(
     source_video_id: int = Form(...),
     prompt: str = Form(...),
     duration: int = Form(10),
+    model: str = Form("v4.5"),
     quality: str = Form("540p"),
     motion_mode: str = Form("normal"),
     seed: int = Form(0)
@@ -693,7 +695,7 @@ async def extend_pixverse_video(
         "seed": seed,
         "quality": quality,
         "duration": duration,
-        "model": "v4.5",
+        "model": model,
         "motion_mode": motion_mode
     }
 
@@ -885,7 +887,9 @@ async def get_tts_speakers(page_num: int = 1, page_size: int = 50):
 
 # --- Image Chat with Vision Model ---
 class ImageChatRequest(BaseModel):
-    image_url: str
+    # Either provide `image_url` (http(s) URL) OR `image_base64` (base64-encoded image bytes).
+    image_url: str | None = None
+    image_base64: str | None = None
     message: str
     model: str = "llava:latest"  # Default to llava
 
@@ -896,13 +900,26 @@ async def chat_with_image(request: ImageChatRequest):
     Accepts image URL and user message, returns AI response.
     """
     try:
-        # Fetch the image and convert to base64
-        img_response = requests.get(request.image_url, timeout=10)
-        if img_response.status_code != 200:
-            raise HTTPException(status_code=400, detail="Failed to fetch image")
-        
-        # Convert image to base64
-        image_base64 = base64.b64encode(img_response.content).decode('utf-8')
+        # Determine where the image bytes come from: base64 provided already, or a URL to fetch
+        image_base64 = None
+
+        if request.image_base64:
+            image_base64 = request.image_base64
+        elif request.image_url:
+            # Fetch the image and convert to base64
+            try:
+                img_response = requests.get(request.image_url, timeout=10)
+            except Exception as e:
+                logger.error(f"Failed to fetch image URL: {e}")
+                raise HTTPException(status_code=400, detail="Failed to fetch image URL")
+
+            if img_response.status_code != 200:
+                raise HTTPException(status_code=400, detail="Failed to fetch image")
+
+            # Convert image to base64
+            image_base64 = base64.b64encode(img_response.content).decode('utf-8')
+        else:
+            raise HTTPException(status_code=400, detail="No image provided. Include image_url or image_base64.")
         
         # Prepare Ollama vision request
         ollama_url = "http://127.0.0.1:11434/api/generate"

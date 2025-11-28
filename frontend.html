@@ -573,6 +573,13 @@
                                 </select>
                             </div>
                             <div>
+                                <label for="pixverse-image-model-select">Model:</label>
+                                <select id="pixverse-image-model-select">
+                                    <option value="v4.5" selected>v4.5 (image-to-video)</option>
+                                    <option value="v5">v5 (text-to-video)</option>
+                                </select>
+                            </div>
+                            <div>
                                 <label for="camera-movement-select">Camera Movement:</label>
                                 <select id="camera-movement-select">
                                     <option value="none" selected>None</option>
@@ -622,6 +629,11 @@
                     <form id="extend-video-form">
                         <label for="extend-prompt">Extension Prompt:</label>
                         <input type="text" id="extend-prompt" placeholder="e.g., camera pans to reveal a mountain" required>
+                        <label for="extend-model-select" style="margin-top:0.5rem; display:block;">Model:</label>
+                        <select id="extend-model-select" style="margin-bottom:0.6rem;">
+                            <option value="v4.5" selected>v4.5</option>
+                            <option value="v5">v5</option>
+                        </select>
                         <button type="submit">Extend Video</button>
                     </form>
                 </div>
@@ -1191,16 +1203,38 @@
             chatStatus.style.color = '#667eea';
             
             try {
+                // Build payload - backend accepts image_url OR image_base64
+                const payload = { message, model: visionModelSelect.value };
+
+                if (imageUrl.startsWith('blob:')) {
+                    // Convert blob URL to base64 data
+                    const blob = await fetch(imageUrl).then(r => r.blob());
+                    const base64 = await new Promise((resolve, reject) => {
+                        const reader = new FileReader();
+                        reader.onerror = () => reject(new Error('Failed to read image blob'));
+                        reader.onloadend = () => {
+                            // reader.result is like 'data:[<mediatype>][;base64],<data>'
+                            const dataUrl = reader.result || '';
+                            const commaIndex = dataUrl.indexOf(',');
+                            resolve(dataUrl.slice(commaIndex + 1));
+                        };
+                        reader.readAsDataURL(blob);
+                    });
+                    payload.image_base64 = base64;
+                } else if (imageUrl.startsWith('data:')) {
+                    // Strip header
+                    const commaIndex = imageUrl.indexOf(',');
+                    payload.image_base64 = imageUrl.slice(commaIndex + 1);
+                } else {
+                    payload.image_url = imageUrl;
+                }
+
                 const response = await fetch('/api/chat-with-image', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({
-                        image_url: imageUrl,
-                        message: message,
-                        model: visionModelSelect.value
-                    })
+                    body: JSON.stringify(payload)
                 });
                 
                 if (!response.ok) {
@@ -1324,6 +1358,7 @@
                 formData.append('quality', document.getElementById('quality-select').value);
                 formData.append('motion_mode', document.getElementById('motion-mode-select').value);
                 formData.append('camera_movement', document.getElementById('camera-movement-select').value);
+                formData.append('model', document.getElementById('pixverse-image-model-select').value);
                 formData.append('seed', document.getElementById('seed-input').value);
 
                 const response = await fetch('/api/pixverse/generate-video-from-image', {
@@ -1652,6 +1687,8 @@
                 formData.append('source_video_id', currentVideoId);
                 formData.append('prompt', prompt);
                 formData.append('duration', '10');
+                // include chosen model for extension
+                formData.append('model', document.getElementById('extend-model-select') ? document.getElementById('extend-model-select').value : 'v4.5');
                 formData.append('quality', '540p');
                 formData.append('motion_mode', 'normal');
                 formData.append('seed', '0');
