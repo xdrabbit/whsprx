@@ -1314,7 +1314,52 @@
                 // Add AI response to chat
                 const aiMsg = document.createElement('div');
                 aiMsg.style.cssText = 'background: white; border: 1px solid #e0e0e0; padding: 0.8rem; border-radius: 8px; margin-bottom: 0.8rem; max-width: 80%;';
-                aiMsg.innerHTML = `<strong style="color: #667eea;">🤖 AI:</strong><br>${result.response.replace(/\n/g, '<br>')}`;
+                // Wrap response text and include a small "Use as prompt" action so users can quickly regenerate from an AI suggestion
+                const aiTextHtml = `<div class="ai-response-text">${result.response.replace(/\n/g, '<br>')}</div>`;
+                aiMsg.innerHTML = `<div style="display:flex; justify-content:space-between; align-items:flex-start; gap:0.5rem;">` +
+                                  `<div style="flex:1;">\n<strong style=\"color: #667eea;\">🤖 AI:</strong><br>${aiTextHtml}</div>` +
+                                  `</div>`;
+
+                // Add a lightweight action button to use this AI text as a generation prompt
+                const usePromptBtn = document.createElement('button');
+                usePromptBtn.className = 'small-btn';
+                usePromptBtn.textContent = '🪄 Use as prompt';
+                usePromptBtn.style.marginTop = '6px';
+                usePromptBtn.style.background = 'linear-gradient(90deg,#8ea8ff,#8f6cff)';
+                usePromptBtn.style.color = 'white';
+                usePromptBtn.style.padding = '0.35rem 0.6rem';
+
+                // clicking will regenerate the image using this AI text and keep the current chat thread intact
+                usePromptBtn.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    const text = result.response.trim();
+                    if (!text) return;
+                    // visual feedback
+                    usePromptBtn.disabled = true;
+                    const originalText = usePromptBtn.textContent;
+                    usePromptBtn.textContent = 'Generating...';
+
+                    try {
+                        await generateImageFromPrompt(text);
+
+                        // Optionally add a system message indicating regeneration
+                        const sysNote = document.createElement('div');
+                        sysNote.style.cssText = 'font-size:0.82rem;color:#555;margin:0.4rem 0;';
+                        sysNote.textContent = 'Regenerated image using this suggestion.';
+                        aiMsg.appendChild(sysNote);
+                    } catch (err) {
+                        alert('Image generation failed: ' + (err.message || err));
+                    } finally {
+                        usePromptBtn.disabled = false;
+                        usePromptBtn.textContent = originalText;
+                    }
+                });
+
+                // place the button below the AI message text
+                const controlsWrap = document.createElement('div');
+                controlsWrap.style.cssText = 'display:flex; gap:0.5rem; margin-top:6px; justify-content:flex-end;';
+                controlsWrap.appendChild(usePromptBtn);
+                aiMsg.appendChild(controlsWrap);
                 chatMessages.appendChild(aiMsg);
                 chatMessages.scrollTop = chatMessages.scrollHeight;
                 
@@ -1331,6 +1376,65 @@
                 chatMessages.scrollTop = chatMessages.scrollHeight;
             }
         });
+
+        // Generate an image directly from a prompt and keep the chat thread (used by 'Use as prompt' buttons)
+        async function generateImageFromPrompt(promptText) {
+            const visualizeStatus = document.getElementById('visualize-status');
+            const imageContainer = document.getElementById('generated-image-container');
+            const selectedImageModel = document.getElementById('comfy-model-input').value || (document.getElementById('comfy-models-list').options[0] ? document.getElementById('comfy-models-list').options[0].value : '');
+
+            visualizeStatus.textContent = 'Generating image from AI suggestion...';
+            imageContainer.innerHTML = '<p>Generating image…</p>';
+
+            try {
+                const formData = new FormData();
+                formData.append('prompt', promptText);
+                formData.append('model', selectedImageModel);
+
+                const imageResponse = await fetch('/api/generate-image', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!imageResponse.ok) {
+                    const err = await imageResponse.json().catch(() => ({ detail: imageResponse.statusText }));
+                    throw new Error(err.detail || 'Image generation failed');
+                }
+
+                const imageBlob = await imageResponse.blob();
+                const imageUrl = URL.createObjectURL(imageBlob);
+
+                // Revoke previous image blob URL if present
+                const imageChatSection = document.getElementById('image-chat-section');
+                try {
+                    const prev = imageChatSection.dataset.imageUrl;
+                    if (prev && prev.startsWith('blob:')) URL.revokeObjectURL(prev);
+                } catch (e) { /* ignore */ }
+
+                // Insert image + delete button similar to visualizeForm behavior
+                imageContainer.innerHTML = `\n                    <div style=\"display:flex; justify-content:flex-end; gap:0.5rem;\">\n                        <button id=\"delete-generated-image\" class=\"small-btn\" style=\"background:#ff6b6b;color:white;padding:0.4rem 0.7rem;\">🗑 Delete</button>\n                    </div>\n                    <img id=\"generated-image\" src=\"${imageUrl}\" alt=\"Generated image based on the AI-enhanced prompt\" style=\"margin-top:0.6rem;\"/>\n                `;
+
+                // Update image-chat dataset for later requests (keep thread intact)
+                if (imageChatSection) imageChatSection.dataset.imageUrl = imageUrl;
+
+                // Wire delete button
+                const deleteImageBtn = document.getElementById('delete-generated-image');
+                if (deleteImageBtn) {
+                    deleteImageBtn.addEventListener('click', () => {
+                        if (!confirm('Delete this generated image? This will remove it and close the image chat.')) return;
+                        try { const img = document.getElementById('generated-image'); if (img && img.src && img.src.startsWith('blob:')) { URL.revokeObjectURL(img.src);} } catch (e) { console.warn('Failed to revoke object URL', e); }
+                        imageContainer.innerHTML = '';
+                        if (imageChatSection) imageChatSection.style.display = 'none';
+                    });
+                }
+
+                visualizeStatus.textContent = 'Image regenerated.';
+            } catch (err) {
+                console.error('Error generating image from prompt', err);
+                visualizeStatus.textContent = `Error: ${err.message || err}`;
+                throw err;
+            }
+        }
 
         // --- Handle PixVerse Video Generation ---
         const pixverseForm = document.getElementById('pixverse-form');
