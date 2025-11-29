@@ -522,6 +522,14 @@ def test_regression_comfyui_models_endpoint():
         assert data["models"][0]["model_name"] == "model1.safetensors"
 
 
+def test_no_deprecated_comfy_models_route():
+    """
+    Ensure there's no legacy /api/comfy/models route — frontend should use /api/comfyui/models.
+    """
+    response = client.get("/api/comfy/models")
+    assert response.status_code == 404
+
+
 # --- PixVerse Extended Features Tests ---
 
 def test_pixverse_extend_video_success():

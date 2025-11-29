@@ -953,6 +953,9 @@ async def chat_with_image(request: ImageChatRequest):
     except requests.exceptions.RequestException as e:
         logger.error(f"Error connecting to Ollama: {e}")
         raise HTTPException(status_code=503, detail="Could not connect to Ollama. Make sure it's running.")
+    except HTTPException:
+        # Re-raise HTTPExceptions so validation / bad-request errors keep their status codes
+        raise
     except Exception as e:
         logger.error(f"Error in image chat: {e}")
         raise HTTPException(status_code=500, detail=str(e))

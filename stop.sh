@@ -9,6 +9,7 @@ if [ -f "server.pid" ]; then
     if ps -p $PID > /dev/null; then
         echo "Stopping server..."
         kill $PID
+        fuser -k 8001/tcp
         echo "Server stopped."
     else
         echo "Server process not found. It might have already been stopped."

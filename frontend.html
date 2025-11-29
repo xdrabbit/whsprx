@@ -304,6 +304,33 @@
 
         .video-actions-row { display:flex; gap:0.5rem; }
 
+        /* Image chat layout fixes: keep chat box full width and send button compact */
+        #image-chat-section #chat-messages {
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        /* Ensure the chat input row stays inline and the send button doesn't expand to 100% */
+        #image-chat-form {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+            width: 100%;
+        }
+
+        #image-chat-form input[type="text"] {
+            flex: 1 1 auto;
+            min-width: 0; /* allow flex children to shrink properly */
+        }
+
+        /* Neutralize the global full-width button style for this inline sender */
+        #image-chat-form button {
+            width: auto !important;
+            flex: 0 0 auto;
+            padding: 0.6rem 1rem;
+            min-width: 64px;
+        }
+
         .small-btn { padding: 0.35rem 0.6rem; font-size: 0.8rem; border-radius: 6px; border: none; cursor:pointer; }
         .small-btn--play { background: linear-gradient(90deg,#ff9a8b,#fecf9f); color:#2b1a13; }
         .small-btn--extend { background: linear-gradient(90deg,#9ad9ff,#b7a6ff); color:#111; }
@@ -1087,8 +1114,12 @@
             const visualizeStatus = document.getElementById('visualize-status');
             try {
                 visualizeStatus.textContent = 'Fetching image models...';
-                const response = await fetch('/api/comfy/models');
-                if (!response.ok) throw new Error('Failed to fetch ComfyUI models.');
+                // Use the same endpoint used elsewhere in the app
+                // (backend exposes `/api/comfyui/models`) — using the wrong
+                // URL caused a 404 and a misleading error to be shown after
+                // the datalist had already been populated earlier.
+                const response = await fetch('/api/comfyui/models');
+                if (!response.ok) throw new Error(`Failed to fetch ComfyUI models: ${response.statusText}`);
                 
                 const data = await response.json();
                 comfyModelsList.innerHTML = '';
@@ -1158,7 +1189,12 @@
                 if (imageResponse.ok) {
                     const imageBlob = await imageResponse.blob();
                     const imageUrl = URL.createObjectURL(imageBlob);
-                    imageContainer.innerHTML = `<img id="generated-image" src="${imageUrl}" alt="Generated image based on the AI-enhanced prompt">`;
+                    imageContainer.innerHTML = `
+                        <div style="display:flex; justify-content:flex-end; gap:0.5rem;">
+                            <button id="delete-generated-image" class="small-btn" style="background:#ff6b6b;color:white;padding:0.4rem 0.7rem;">🗑 Delete</button>
+                        </div>
+                        <img id="generated-image" src="${imageUrl}" alt="Generated image based on the AI-enhanced prompt" style="margin-top:0.6rem;"/>
+                    `;
                     visualizeStatus.textContent = 'Image generated successfully!';
                     
                     // Show image chat interface and store the image URL
@@ -1171,6 +1207,27 @@
                 } else {
                     const error = await imageResponse.json();
                     throw new Error(error.detail || 'Image generation failed.');
+                }
+                // Wire up the delete button for generated images
+                const deleteImageBtn = document.getElementById('delete-generated-image');
+                if (deleteImageBtn) {
+                    deleteImageBtn.addEventListener('click', () => {
+                        if (!confirm('Delete this generated image? This will remove it and close the image chat.')) return;
+                        // If image is an object URL, revoke it
+                        try {
+                            const img = document.getElementById('generated-image');
+                            if (img && img.src && img.src.startsWith('blob:')) {
+                                URL.revokeObjectURL(img.src);
+                            }
+                        } catch (e) {
+                            console.warn('Failed to revoke object URL', e);
+                        }
+
+                        // Clear UI
+                        imageContainer.innerHTML = '';
+                        const imageChatSection = document.getElementById('image-chat-section');
+                        if (imageChatSection) imageChatSection.style.display = 'none';
+                    });
                 }
             } catch (error) {
                 visualizeStatus.textContent = `Error: ${error.message}`;
@@ -1587,6 +1644,30 @@
 
                 actions.appendChild(playBtn);
                 actions.appendChild(extendBtn);
+                
+                // Delete button - removes the entry from the browser gallery
+                const deleteBtn = document.createElement('button');
+                deleteBtn.className = 'small-btn';
+                deleteBtn.style.background = 'linear-gradient(90deg,#ff9a8b,#ff6b6b)';
+                deleteBtn.style.color = '#fff';
+                deleteBtn.textContent = '🗑 Delete';
+                deleteBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    if (!confirm('Delete this saved video from your browser gallery? This cannot be undone.')) return;
+                    // Remove from localStorage list
+                    let list = loadSavedVideos();
+                    list = list.filter(v => String(v.video_id) !== String(item.video_id));
+                    saveVideos(list);
+                    // If currently loaded video, clear it
+                    if (currentVideoId && String(currentVideoId) === String(item.video_id)) {
+                        generatedVideoContainer.innerHTML = '';
+                        document.getElementById('video-actions').style.display = 'none';
+                        currentVideoId = null;
+                    }
+                    renderVideoGallery();
+                });
+
+                actions.appendChild(deleteBtn);
 
                 tile.appendChild(thumb);
                 tile.appendChild(meta);
