@@ -16,6 +16,7 @@ from elevenlabs import Voice
 from elevenlabs.client import ElevenLabs
 import base64
 from pydantic import BaseModel
+from thread_store import ThreadStore
 
 # --- 1. Application Setup ---
 
@@ -959,6 +960,107 @@ async def chat_with_image(request: ImageChatRequest):
     except Exception as e:
         logger.error(f"Error in image chat: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# --- 6. Chat thread persistence (server-side) ---
+# Initialize a thread store under the db directory
+THREAD_STORE_PATH = os.path.join(DB_PATH, "chat_threads.json")
+thread_store = ThreadStore(THREAD_STORE_PATH)
+
+
+class CreateThreadRequest(BaseModel):
+    name: str | None = None
+
+
+class AddMessageRequest(BaseModel):
+    role: str
+    type: str | None = "text"
+    text: str | None = None
+    extra: dict | None = None
+
+
+@app.get("/api/chat/threads")
+async def list_threads():
+    try:
+        return {"threads": thread_store.list_threads()}
+    except Exception as e:
+        logger.error(f"Error listing threads: {e}")
+        raise HTTPException(status_code=500, detail="Failed to list threads")
+
+
+@app.post("/api/chat/threads")
+async def create_thread(req: CreateThreadRequest):
+    try:
+        t = thread_store.create_thread(req.name)
+        return t
+    except Exception as e:
+        logger.error(f"Error creating thread: {e}")
+        raise HTTPException(status_code=500, detail="Failed to create thread")
+
+
+@app.get("/api/chat/threads/{thread_id}")
+async def get_thread(thread_id: str):
+    try:
+        t = thread_store.get_thread(thread_id)
+        if not t:
+            raise HTTPException(status_code=404, detail="Thread not found")
+        return t
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching thread: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch thread")
+
+
+@app.delete("/api/chat/threads/{thread_id}")
+async def delete_thread(thread_id: str):
+    try:
+        ok = thread_store.delete_thread(thread_id)
+        if not ok:
+            raise HTTPException(status_code=404, detail="Thread not found")
+        return {"deleted": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting thread: {e}")
+        raise HTTPException(status_code=500, detail="Failed to delete thread")
+
+
+@app.post("/api/chat/threads/{thread_id}/messages")
+async def add_message(thread_id: str, payload: AddMessageRequest):
+    try:
+        t = thread_store.get_thread(thread_id)
+        if not t:
+            raise HTTPException(status_code=404, detail="Thread not found")
+        msg = thread_store.add_message(thread_id, role=payload.role, text=payload.text, type_=payload.type or "text", extra=payload.extra)
+        return msg
+    except HTTPException:
+        raise
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Thread not found")
+    except Exception as e:
+        logger.error(f"Error adding message to thread: {e}")
+        raise HTTPException(status_code=500, detail="Failed to add message")
+
+
+@app.get("/api/chat/threads/{thread_id}/export")
+async def export_thread(thread_id: str, format: str | None = None):
+    try:
+        t = thread_store.get_thread(thread_id)
+        if not t:
+            raise HTTPException(status_code=404, detail="Thread not found")
+
+        md = thread_store.export_markdown(thread_id)
+        if format == 'pdf':
+            # PDF generation not implemented here - keep minimal for now
+            raise HTTPException(status_code=501, detail="PDF export not implemented. Use markdown export.")
+
+        return HTMLResponse(content=md, status_code=200, media_type='text/markdown')
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error exporting thread: {e}")
+        raise HTTPException(status_code=500, detail="Failed to export thread")
 
 
 # --- 5. Application Entry Point ---

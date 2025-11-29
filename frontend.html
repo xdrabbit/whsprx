@@ -511,6 +511,14 @@
                                 <option value="bakllava:latest">BakLLaVA</option>
                             </select>
                         </div>
+                        <!-- Thread controls: select / new / export / delete -->
+                        <div id="thread-controls" style="display:flex;gap:0.5rem;align-items:center;margin-bottom:0.7rem;">
+                            <label style="margin:0;font-size:0.85rem;color:#555;">Thread:</label>
+                            <select id="image-thread-select" style="padding:0.3rem;border-radius:4px;border:1px solid #ddd;min-width:240px;"></select>
+                            <button id="new-thread-btn" class="small-btn" style="background:#fff;border:1px solid #eee;">+ New</button>
+                            <button id="export-thread-btn" class="small-btn" style="background:#ffffff;border:1px solid #eee;">Export</button>
+                            <button id="delete-thread-btn" class="small-btn" style="background:#ffe6e6;border:1px solid #ffb3b3;color:#b30000;">Delete</button>
+                        </div>
                         <div id="chat-messages" style="max-height: 300px; overflow-y: auto; background: #f8f9fa; padding: 1rem; border-radius: 8px; margin-bottom: 1rem; border: 1px solid #e0e0e0;">
                             <p style="color: #666; font-size: 0.9rem; text-align: center; margin: 2rem 0;">Ask me anything about this image! 🎨</p>
                         </div>
@@ -866,9 +874,96 @@
             // --- Fetch PixVerse Credits ---
             fetchPixverseCredits();
 
+            // --- Load persisted chat threads ---
+            await loadThreads();
+
             // Render saved video gallery from localStorage
             renderVideoGallery();
         });
+
+        // --- Thread management functions ---
+        async function loadThreads() {
+            try {
+                const sel = document.getElementById('image-thread-select');
+                sel.innerHTML = '';
+                const resp = await fetch('/api/chat/threads');
+                if (!resp.ok) return;
+                const data = await resp.json();
+                const threads = data.threads || [];
+                if (threads.length === 0) {
+                    const o = document.createElement('option'); o.value = ''; o.textContent = 'No threads — create one'; sel.appendChild(o);
+                    return;
+                }
+                threads.forEach(t => {
+                    const o = document.createElement('option'); o.value = t.id; o.textContent = `${t.name} — ${new Date(t.modified_at).toLocaleString()}`; sel.appendChild(o);
+                });
+            } catch (err) {
+                console.warn('Failed to load threads', err);
+            }
+        }
+
+        document.getElementById('new-thread-btn').addEventListener('click', async () => {
+            const name = prompt('Thread name (optional)');
+            try {
+                const resp = await fetch('/api/chat/threads', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ name }) });
+                if (!resp.ok) throw new Error('Failed to create');
+                await loadThreads();
+                // select the newest (first) matching name
+                const data = await resp.json();
+                const sel = document.getElementById('image-thread-select');
+                for (let i=0;i<sel.options.length;i++) if (sel.options[i].value === data.id) { sel.selectedIndex = i; break; }
+            } catch (err) { alert('Failed to create thread: ' + err.message); }
+        });
+
+        document.getElementById('export-thread-btn').addEventListener('click', async () => {
+            const sel = document.getElementById('image-thread-select');
+            const id = sel.value;
+            if (!id) return alert('Select a thread first');
+            try {
+                const resp = await fetch(`/api/chat/threads/${id}/export`);
+                if (!resp.ok) throw new Error((await resp.json()).detail || resp.statusText);
+                const md = await resp.text();
+                // download as file
+                const blob = new Blob([md], { type: 'text/markdown' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a'); a.href = url; a.download = `${id}.md`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+            } catch (err) { alert('Export failed: ' + err.message); }
+        });
+
+        document.getElementById('delete-thread-btn').addEventListener('click', async () => {
+            const sel = document.getElementById('image-thread-select');
+            const id = sel.value;
+            if (!id) return alert('Select a thread first');
+            if (!confirm('Delete this thread and all messages?')) return;
+            try {
+                const resp = await fetch(`/api/chat/threads/${id}`, { method: 'DELETE' });
+                if (!resp.ok) throw new Error((await resp.json()).detail || resp.statusText);
+                await loadThreads();
+                // clear dataset on image chat if it was this thread
+                const imageChatSection = document.getElementById('image-chat-section');
+                if (imageChatSection && imageChatSection.dataset.threadId === id) {
+                    imageChatSection.dataset.threadId = '';
+                }
+            } catch (err) { alert('Delete failed: ' + err.message); }
+        });
+
+        async function ensureThread() {
+            const sel = document.getElementById('image-thread-select');
+            if (sel && sel.value) return sel.value;
+            // create anonymous
+            try {
+                const resp = await fetch('/api/chat/threads', { method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ name: 'Untitled Thread' }) });
+                if (!resp.ok) throw new Error('Failed to create thread');
+                const t = await resp.json();
+                await loadThreads();
+                const select = document.getElementById('image-thread-select');
+                for (let i=0;i<select.options.length;i++) if (select.options[i].value === t.id) { select.selectedIndex = i; break; }
+                return t.id;
+            } catch (e) {
+                console.warn('Failed to create thread on server', e);
+                return '';
+            }
+        }
         
         // Function to fetch and display PixVerse credits
         async function fetchPixverseCredits() {
@@ -1250,6 +1345,9 @@
             
             const imageChatSection = document.getElementById('image-chat-section');
             const imageUrl = imageChatSection.dataset.imageUrl;
+            // ensure server thread exists and associate with chat
+            const threadId = await ensureThread();
+            if (threadId) imageChatSection.dataset.threadId = threadId;
             
             if (!imageUrl) {
                 chatStatus.textContent = 'No image available for chat.';
@@ -1296,6 +1394,19 @@
                     payload.image_url = imageUrl;
                 }
 
+                // if we have a server thread id, persist user's chat message before sending to model
+                if (threadId) {
+                    try {
+                        await fetch(`/api/chat/threads/${threadId}/messages`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ role: 'user', type: 'text', text: message })
+                        });
+                    } catch (err) {
+                        console.warn('Failed to persist user chat message', err);
+                    }
+                }
+
                 const response = await fetch('/api/chat-with-image', {
                     method: 'POST',
                     headers: {
@@ -1340,6 +1451,16 @@
                     usePromptBtn.textContent = 'Generating...';
 
                     try {
+                        // persist the "user" action (using AI text as prompt) into the thread
+                        try {
+                            if (threadId) {
+                                await fetch(`/api/chat/threads/${threadId}/messages`, {
+                                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ role: 'user', type: 'text', text: text })
+                                });
+                            }
+                        } catch (e) { console.warn('Failed to persist prompt-as-user', e); }
+
                         await generateImageFromPrompt(text);
 
                         // Optionally add a system message indicating regeneration
@@ -1363,6 +1484,16 @@
                 chatMessages.appendChild(aiMsg);
                 chatMessages.scrollTop = chatMessages.scrollHeight;
                 
+                // persist AI text response to server-side thread
+                try {
+                    if (threadId) {
+                        await fetch(`/api/chat/threads/${threadId}/messages`, {
+                            method: 'POST', headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ role: 'ai', type: 'text', text: result.response })
+                        });
+                    }
+                } catch (err) { console.warn('Failed to persist AI response', err); }
+
                 chatStatus.textContent = '';
             } catch (error) {
                 chatStatus.textContent = `Error: ${error.message}`;
@@ -1387,6 +1518,10 @@
             imageContainer.innerHTML = '<p>Generating image…</p>';
 
             try {
+                // ensure we have a server-side thread to record this regeneration
+                const threadId = await ensureThread();
+                const imageChatSection = document.getElementById('image-chat-section');
+                if (threadId && imageChatSection) imageChatSection.dataset.threadId = threadId;
                 const formData = new FormData();
                 formData.append('prompt', promptText);
                 formData.append('model', selectedImageModel);
@@ -1404,8 +1539,7 @@
                 const imageBlob = await imageResponse.blob();
                 const imageUrl = URL.createObjectURL(imageBlob);
 
-                // Revoke previous image blob URL if present
-                const imageChatSection = document.getElementById('image-chat-section');
+                // Revoke previous image blob URL if present (reuse imageChatSection)
                 try {
                     const prev = imageChatSection.dataset.imageUrl;
                     if (prev && prev.startsWith('blob:')) URL.revokeObjectURL(prev);
@@ -1416,6 +1550,27 @@
 
                 // Update image-chat dataset for later requests (keep thread intact)
                 if (imageChatSection) imageChatSection.dataset.imageUrl = imageUrl;
+
+                // Convert blob to base64 so we can persist into the server-side thread storage
+                const b64 = await new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => resolve(reader.result);
+                    reader.onerror = () => reject(new Error('Failed to read image blob'));
+                    reader.readAsDataURL(imageBlob);
+                });
+
+                // Persist image message to server (if we have a thread)
+                try {
+                    if (threadId) {
+                        await fetch(`/api/chat/threads/${threadId}/messages`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ role: 'ai', type: 'image', text: promptText, extra: { image_base64: b64 } })
+                        });
+                    }
+                } catch (err) {
+                    console.warn('Failed to persist image message', err);
+                }
 
                 // Wire delete button
                 const deleteImageBtn = document.getElementById('delete-generated-image');
