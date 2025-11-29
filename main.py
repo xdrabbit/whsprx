@@ -16,6 +16,7 @@ from elevenlabs import Voice
 from elevenlabs.client import ElevenLabs
 import base64
 from pydantic import BaseModel
+import shutil
 from thread_store import ThreadStore
 from asset_manager import save_base64_image
 from export_queue import ExportQueue
@@ -1023,6 +1024,17 @@ async def delete_thread(thread_id: str):
         ok = thread_store.delete_thread(thread_id)
         if not ok:
             raise HTTPException(status_code=404, detail="Thread not found")
+        # remove persisted assets and exports for this thread
+        try:
+            assets_dir = os.path.join(DB_PATH, 'thread_assets', thread_id)
+            exports_dir = os.path.join(DB_PATH, 'exports', thread_id)
+            if os.path.exists(assets_dir):
+                shutil.rmtree(assets_dir)
+            if os.path.exists(exports_dir):
+                shutil.rmtree(exports_dir)
+        except Exception as e:
+            logger.warning(f"Failed to cleanup thread assets/exports for {thread_id}: {e}")
+
         return {"deleted": True}
     except HTTPException:
         raise

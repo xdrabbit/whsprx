@@ -1,5 +1,6 @@
 import pytest
 import time
+import os
 from fastapi.testclient import TestClient
 from main import app
 
@@ -116,6 +117,37 @@ def test_delete_thread():
     assert resp.status_code == 200
     tid = resp.json()['id']
 
+    # add an image message so assets are created
+    fake_b64 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVQYV2NgYAAAAAMAAWgmWQ0AAAAASUVORK5CYII='
+    resp = client.post(f'/api/chat/threads/{tid}/messages', json={'role': 'ai', 'type': 'image', 'text': 'An image', 'extra': {'image_base64': fake_b64}})
+    assert resp.status_code == 200
+    fp = resp.json().get('extra', {}).get('file_path')
+    assert fp and os.path.exists(fp)
+
+    # create an export job too
+    r = client.post(f'/api/chat/threads/{tid}/export')
+    assert r.status_code == 200
+    job_id = r.json()['job_id']
+    # wait for job completion
+    for _ in range(50):
+        st = client.get(f'/api/chat/threads/{tid}/export/{job_id}/status')
+        status = st.json().get('status')
+        if status in ('done', 'failed'):
+            break
+        time.sleep(0.05)
+
+    # ensure export artifact exists (if job done)
+    if status == 'done':
+        dl = client.get(f'/api/chat/threads/{tid}/export/{job_id}/download')
+        assert dl.status_code == 200
+
+    # delete thread should also remove assets and exports directories
     resp = client.delete(f'/api/chat/threads/{tid}')
     assert resp.status_code == 200
     assert resp.json().get('deleted') is True
+
+    # ensure persisted asset dir removed
+    assets_dir = os.path.join('db', 'thread_assets', tid)
+    assert not os.path.exists(assets_dir)
+    exports_dir = os.path.join('db', 'exports', tid)
+    assert not os.path.exists(exports_dir)
