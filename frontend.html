@@ -920,13 +920,29 @@
             const id = sel.value;
             if (!id) return alert('Select a thread first');
             try {
-                const resp = await fetch(`/api/chat/threads/${id}/export`);
+                // enqueue export job (POST). server returns { job_id }
+                const resp = await fetch(`/api/chat/threads/${id}/export`, { method: 'POST' });
                 if (!resp.ok) throw new Error((await resp.json()).detail || resp.statusText);
-                const md = await resp.text();
-                // download as file
-                const blob = new Blob([md], { type: 'text/markdown' });
+                const data = await resp.json();
+                const jobId = data.job_id;
+                // poll status until done
+                let status = '';
+                const statusUrl = `/api/chat/threads/${id}/export/${jobId}/status`;
+                for (let i = 0; i < 60; i++) {
+                    const s = await fetch(statusUrl);
+                    const sdata = await s.json();
+                    status = sdata.status;
+                    if (status === 'done') break;
+                    if (status === 'failed') throw new Error('Export failed: ' + (sdata.error || 'unknown'));
+                    await new Promise(r => setTimeout(r, 200));
+                }
+
+                // download artifact
+                const dl = await fetch(`/api/chat/threads/${id}/export/${jobId}/download`);
+                if (!dl.ok) throw new Error('Download failed');
+                const blob = await dl.blob();
                 const url = URL.createObjectURL(blob);
-                const a = document.createElement('a'); a.href = url; a.download = `${id}.md`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+                const a = document.createElement('a'); a.href = url; a.download = `${id}-${jobId}.zip`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
             } catch (err) { alert('Export failed: ' + err.message); }
         });
 

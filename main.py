@@ -17,6 +17,7 @@ from elevenlabs.client import ElevenLabs
 import base64
 from pydantic import BaseModel
 from thread_store import ThreadStore
+from export_queue import ExportQueue
 
 # --- 1. Application Setup ---
 
@@ -967,6 +968,9 @@ async def chat_with_image(request: ImageChatRequest):
 THREAD_STORE_PATH = os.path.join(DB_PATH, "chat_threads.json")
 thread_store = ThreadStore(THREAD_STORE_PATH)
 
+# export queue for async export jobs
+export_queue = ExportQueue(DB_PATH, thread_store)
+
 
 class CreateThreadRequest(BaseModel):
     name: str | None = None
@@ -1043,24 +1047,54 @@ async def add_message(thread_id: str, payload: AddMessageRequest):
         raise HTTPException(status_code=500, detail="Failed to add message")
 
 
-@app.get("/api/chat/threads/{thread_id}/export")
-async def export_thread(thread_id: str, format: str | None = None):
+@app.post("/api/chat/threads/{thread_id}/export")
+async def export_thread(thread_id: str, format: str | None = 'zip'):
+    """Enqueue an async export job (default: zip containing markdown + images).
+    Returns job id which can be polled at /api/chat/threads/{thread_id}/export/{job_id}/status
+    and the artifact can be downloaded at /api/chat/threads/{thread_id}/export/{job_id}/download
+    """
     try:
         t = thread_store.get_thread(thread_id)
         if not t:
             raise HTTPException(status_code=404, detail="Thread not found")
 
-        md = thread_store.export_markdown(thread_id)
-        if format == 'pdf':
-            # PDF generation not implemented here - keep minimal for now
-            raise HTTPException(status_code=501, detail="PDF export not implemented. Use markdown export.")
-
-        return HTMLResponse(content=md, status_code=200, media_type='text/markdown')
+        job = export_queue.enqueue(thread_id, format=format or 'zip')
+        return {"job_id": job.id, "status": job.status}
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error exporting thread: {e}")
-        raise HTTPException(status_code=500, detail="Failed to export thread")
+        logger.error(f"Error enqueuing export job: {e}")
+        raise HTTPException(status_code=500, detail="Failed to enqueue export job")
+
+
+@app.get("/api/chat/threads/{thread_id}/export/{job_id}/status")
+async def export_status(thread_id: str, job_id: str):
+    try:
+        job = export_queue.status(job_id)
+        if not job or job.thread_id != thread_id:
+            raise HTTPException(status_code=404, detail="Export job not found")
+        return {"job_id": job.id, "status": job.status, "error": job.error}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error checking export status: {e}")
+        raise HTTPException(status_code=500, detail="Failed to check export status")
+
+
+@app.get("/api/chat/threads/{thread_id}/export/{job_id}/download")
+async def export_download(thread_id: str, job_id: str):
+    try:
+        job = export_queue.status(job_id)
+        if not job or job.thread_id != thread_id:
+            raise HTTPException(status_code=404, detail="Export job not found")
+        if job.status != 'done' or not job.result_path:
+            raise HTTPException(status_code=409, detail=f"Export not ready: {job.status}")
+        return FileResponse(job.result_path, media_type='application/zip', filename=os.path.basename(job.result_path))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error downloading export: {e}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve export")
 
 
 # --- 5. Application Entry Point ---
