@@ -17,6 +17,7 @@ from elevenlabs.client import ElevenLabs
 import base64
 from pydantic import BaseModel
 from thread_store import ThreadStore
+from asset_manager import save_base64_image
 from export_queue import ExportQueue
 
 # --- 1. Application Setup ---
@@ -1036,7 +1037,16 @@ async def add_message(thread_id: str, payload: AddMessageRequest):
         t = thread_store.get_thread(thread_id)
         if not t:
             raise HTTPException(status_code=404, detail="Thread not found")
-        msg = thread_store.add_message(thread_id, role=payload.role, text=payload.text, type_=payload.type or "text", extra=payload.extra)
+        # Persist image contents to disk when present in payload.extra
+        extra = payload.extra or {}
+        if extra.get('image_base64'):
+            # write to disk under DB_PATH/thread_assets/<thread_id>/
+            dest_dir = os.path.join(DB_PATH, 'thread_assets', thread_id)
+            file_path = save_base64_image(extra.get('image_base64'), dest_dir)
+            if file_path:
+                extra['file_path'] = file_path
+
+        msg = thread_store.add_message(thread_id, role=payload.role, text=payload.text, type_=payload.type or "text", extra=extra)
         return msg
     except HTTPException:
         raise

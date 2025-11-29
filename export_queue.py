@@ -3,6 +3,7 @@ import threading
 import uuid
 import time
 import shutil
+import subprocess
 import zipfile
 from typing import Dict
 
@@ -142,3 +143,32 @@ class ExportQueue:
                     z.write(full, arcname=arc)
 
         job.result_path = zip_path
+        # If the user requested a PDF, try pandoc first, otherwise attempt WeasyPrint
+        if job.format == 'pdf':
+            pdf_path = os.path.join(self.db_path, 'exports', job.thread_id, f"{job.id}.pdf")
+            # Try pandoc
+            pandoc = shutil.which('pandoc')
+            if pandoc:
+                try:
+                    subprocess.run([pandoc, md_path, '-o', pdf_path], check=True, cwd=out_base)
+                    job.result_path = pdf_path
+                    return
+                except Exception as e:
+                    # continue to try other options
+                    pass
+
+            # Try WeasyPrint (requires markdown -> html conversion)
+            try:
+                import markdown as _md
+                from weasyprint import HTML
+
+                with open(md_path, 'r', encoding='utf-8') as f:
+                    md_text = f.read()
+
+                html = _md.markdown(md_text, extensions=['extra'])
+                HTML(string=html, base_url=out_base).write_pdf(pdf_path)
+                job.result_path = pdf_path
+                return
+            except Exception:
+                # no converter available, mark as failed
+                raise RuntimeError('No PDF converter available (pandoc or weasyprint+markdown required)')

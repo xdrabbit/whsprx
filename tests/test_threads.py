@@ -39,10 +39,16 @@ def test_add_messages_and_export():
     msg = resp.json()
     assert msg['role'] == 'user'
 
-    # Add an image message (base64 stub)
+    # Add an image message (base64 stub) and ensure server persist file
     fake_b64 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVQYV2NgYAAAAAMAAWgmWQ0AAAAASUVORK5CYII='
     resp = client.post(f'/api/chat/threads/{tid}/messages', json={'role': 'ai', 'type': 'image', 'text': 'An image', 'extra': {'image_base64': fake_b64}})
     assert resp.status_code == 200
+    msg2 = resp.json()
+    # server should have saved a file_path in message.extra
+    fp = msg2.get('extra', {}).get('file_path')
+    assert fp and isinstance(fp, str)
+    import os
+    assert os.path.exists(fp)
 
     # Trigger async export job (zip)
     resp = client.post(f'/api/chat/threads/{tid}/export')
@@ -74,6 +80,35 @@ def test_add_messages_and_export():
     assert 'thread.md' in names
     # ensure the image exists in the zip
     assert any(n.startswith('images/') for n in names)
+
+
+def test_pdf_export_job():
+    resp = client.post('/api/chat/threads', json={'name': 'pdf-thread'})
+    assert resp.status_code == 200
+    tid = resp.json()['id']
+
+    fake_b64 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVQYV2NgYAAAAAMAAWgmWQ0AAAAASUVORK5CYII='
+    resp = client.post(f'/api/chat/threads/{tid}/messages', json={'role': 'ai', 'type': 'image', 'text': 'An image', 'extra': {'image_base64': fake_b64}})
+    assert resp.status_code == 200
+
+    r = client.post(f'/api/chat/threads/{tid}/export', json={})
+    assert r.status_code == 200
+    job_id = r.json()['job_id']
+
+    # Wait for completion (done or failed)
+    status = None
+    for _ in range(40):
+        st = client.get(f'/api/chat/threads/{tid}/export/{job_id}/status')
+        assert st.status_code == 200
+        status = st.json().get('status')
+        if status in ('done', 'failed'):
+            break
+        time.sleep(0.1)
+
+    assert status in ('done', 'failed')
+    if status == 'done':
+        d = client.get(f'/api/chat/threads/{tid}/export/{job_id}/download')
+        assert d.status_code == 200
 
 
 def test_delete_thread():
